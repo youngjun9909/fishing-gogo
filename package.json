@@ -1,0 +1,10 @@
+{
+  "name": "fishing-gogo",
+  "private": true,
+  "workspaces": ["shared", "server", "client"],
+  "scripts": {
+    "test": "npm test -w server",
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client"
+  }
+}
