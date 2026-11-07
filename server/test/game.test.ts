@@ -246,6 +246,18 @@ describe("경제와 도감", () => {
     expect((await h.service.equip("a", "hat", "hat-straw")).equipped.hat).toBe("hat-straw");
   });
 
+  it("상의·하의·신발을 따로 사고 각자 칸에만 입을 수 있다", async () => {
+    const p0 = await h.service.ensureProfile("a");
+    await h.store.saveProfile({ ...p0, coins: 1000 });
+    await h.service.buy("a", "top-hoodie");
+    await h.service.buy("a", "pants-jeans");
+    await expect(h.service.equip("a", "pants", "top-hoodie")).rejects.toThrow("입을 수 없");
+    await expect(h.service.equip("a", "shoes", "shoes-white")).rejects.toThrow("가지고 있지 않");
+    await h.service.equip("a", "top", "top-hoodie");
+    const p = await h.service.equip("a", "pants", "pants-jeans");
+    expect(p.equipped).toEqual({ top: "top-hoodie", pants: "pants-jeans" });
+  });
+
   it("전용 오라는 살 수 없고, 도감을 모두 채우면 전용 오라와 이모트를 받는다", async () => {
     await h.service.ensureProfile("a");
     await expect(h.service.buy("a", "aura-legend")).rejects.toThrow("살 수 없는");

@@ -260,11 +260,11 @@ function Codex({ onClose, profile }: { onClose: () => void; profile: PlayerProfi
   );
 }
 
-const SLOT_NAME = { outfit: "옷", hat: "모자", aura: "오라" } as const;
-const SLOT_EMOJI = { outfit: "👕", hat: "🎩", aura: "✨" } as const;
+const SLOT_NAME = { top: "상의", pants: "하의", shoes: "신발", hat: "모자", aura: "오라" } as const;
+const SLOT_EMOJI = { top: "👕", pants: "👖", shoes: "👟", hat: "🎩", aura: "✨" } as const;
 
 function Shop({ onClose, profile, reload }: { onClose: () => void; profile: PlayerProfile; reload: () => Promise<void> }) {
-  const [slot, setSlot] = useState<ShopItem["slot"]>("outfit");
+  const [slot, setSlot] = useState<ShopItem["slot"]>("top");
   const [msg, setMsg] = useState("");
   const items = ITEMS.filter((i) => i.slot === slot && (i.purchasable || profile.ownedItems.includes(i.id)));
 
@@ -283,7 +283,7 @@ function Shop({ onClose, profile, reload }: { onClose: () => void; profile: Play
   return (
     <Modal title={`🛍️ 상점  🪙 ${profile.coins.toLocaleString()}`} onClose={onClose}>
       <div className="tabs">
-        {(["outfit", "hat", "aura"] as const).map((s) => (
+        {(["top", "pants", "shoes", "hat", "aura"] as const).map((s) => (
           <button key={s} className={`tab ${slot === s ? "on" : ""}`} onClick={() => setSlot(s)}>{SLOT_EMOJI[s]} {SLOT_NAME[s]}</button>
         ))}
         <span className="hint" style={{ alignSelf: "center" }}>{msg}</span>

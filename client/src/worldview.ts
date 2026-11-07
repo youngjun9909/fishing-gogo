@@ -10,6 +10,12 @@ const mapId = params.get("map") ?? "lake";
 const minutes = Number(params.get("t") ?? 3);
 const cam = Number(params.get("cam") ?? 0);
 const pose = params.get("pose") ?? "idle";
+// &outfit=top-hoodie,shoes-white 처럼 입을 아이템을 쉼표로 적는다(&outfit=all 은 셋 다)
+const wear = () => {
+  const o = params.get("outfit");
+  const ids = o === "all" ? ["top-hoodie", "pants-jeans", "shoes-white"] : o ? o.split(",") : [];
+  return Object.fromEntries(ids.map((id) => [id.split("-")[0], id]));
+};
 
 const root = document.getElementById("root")!;
 const scene = new THREE.Scene();
@@ -57,7 +63,7 @@ if (gallery) {
       else if (gallery === "eyes") ap.eyes = k;
       else if (gallery === "nose") ap.nose = k % 6;
       else if (gallery === "mouth") ap.mouth = k % 8;
-      const r = new CharacterRig({ appearance: ap, equipped: params.get("outfit") ? { outfit: `outfit-${params.get("outfit")}` } : {} });
+      const r = new CharacterRig({ appearance: ap, equipped: wear() });
       r.root.position.set(spawn.x + (i - (cnt - 1) / 2) * gap, 0, spawn.z);
       r.facing = gallery === "turn" ? (i * Math.PI * 2) / cnt : 0;
       scene.add(r.root);
@@ -69,7 +75,7 @@ if (gallery) {
 void loadCharacterModel().then(() => {
   if (gallery) return;
   const n = (k: string, d: number) => Number(params.get(k) ?? d);
-  rig = new CharacterRig({ appearance: { eyes: n("eyes", 0), nose: n("nose", 1), mouth: n("mouth", 0), hair: n("hair", 0), skinColor: n("skin", 0), hairColor: n("hc", 0), eyeColor: n("ec", 1), body: 1, gender: n("gender", 0) }, equipped: params.get("outfit") ? { outfit: `outfit-${params.get("outfit")}` } : {} });
+  rig = new CharacterRig({ appearance: { eyes: n("eyes", 0), nose: n("nose", 1), mouth: n("mouth", 0), hair: n("hair", 0), skinColor: n("skin", 0), hairColor: n("hc", 0), eyeColor: n("ec", 1), body: 1, gender: n("gender", 0) }, equipped: wear() });
   rig.root.position.set(spawn.x, 0, spawn.z);
   rig.facing = params.get("ang") !== null ? (Number(params.get("ang")) * Math.PI) / 180 : params.get("face") === "front" ? 0 : Math.PI;
   scene.add(rig.root);

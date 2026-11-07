@@ -1,7 +1,7 @@
 import { codexSpeciesFor, SPECIES } from "./fish";
 import type { MapId } from "./types";
 
-export type ItemSlot = "outfit" | "hat" | "aura";
+export type ItemSlot = "top" | "pants" | "shoes" | "hat" | "aura";
 
 export interface ShopItem {
   id: string;
@@ -13,10 +13,10 @@ export interface ShopItem {
 }
 
 export const ITEMS: ShopItem[] = [
-  { id: "outfit-hoodie", name: "후드티 코디", slot: "outfit", price: 400, purchasable: true },
-  { id: "outfit-overalls", name: "멜빵바지", slot: "outfit", price: 300, purchasable: true },
-  { id: "outfit-raincoat", name: "노란 우비", slot: "outfit", price: 500, purchasable: true },
-  { id: "outfit-hanbok", name: "한복", slot: "outfit", price: 900, purchasable: true },
+  // 옷은 상의·하의·신발을 따로 사고 입는다. 기본 옷(흰 티, 검정 반바지, 검정 운동화)은 아무것도 안 입었을 때 보인다
+  { id: "top-hoodie", name: "남색 후드티", slot: "top", price: 200, purchasable: true },
+  { id: "pants-jeans", name: "청바지", slot: "pants", price: 150, purchasable: true },
+  { id: "shoes-white", name: "흰 운동화", slot: "shoes", price: 100, purchasable: true },
   { id: "hat-straw", name: "밀짚모자", slot: "hat", price: 200, purchasable: true },
   { id: "hat-beanie", name: "털모자", slot: "hat", price: 350, purchasable: true },
   { id: "hat-captain", name: "선장 모자", slot: "hat", price: 700, purchasable: true },

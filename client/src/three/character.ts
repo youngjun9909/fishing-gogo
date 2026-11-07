@@ -90,11 +90,12 @@ const MODEL_SCALE = 2.6; // 모델은 키 1m, 게임 안 캐릭터는 약 2.6
 
 const ARM_DOWN = 1.22; // 모델은 T자세. 걷기·낚시에서 팔을 내리는 각도
 /** 게임 옷 아이템 → 몸 GLB 안의 옷 메시(상의·하의·신발) 이름 뒷부분. 메시 이름은 top_/pants_/shoes_ (+ 디테일은 topd_ 등) 뒤에 붙는다 */
-const OUTFIT_SET: Record<string, { top: string; pants: string; shoes: string }> = {
-  "outfit-hoodie": { top: "hoodie", pants: "tee", shoes: "hoodie" }, // 남색 후드티 + 청바지 + 운동화
+const ITEM_MESH: Record<string, string> = {
+  "top-hoodie": "hoodie", // 남색 후드티
+  "pants-jeans": "tee", // 청바지(메시 이름이 tee인 것은 옛 이름)
+  "shoes-white": "hoodie", // 흰 운동화
 };
-/** 아무 옷도 안 입었을 때 모두가 입는 기본 옷(흰 티, 검정 반바지, 검정 스니커즈) */
-const BASIC_SET = { top: "basic", pants: "basic", shoes: "basic" };
+// 아무것도 안 입은 칸은 기본 옷("basic": 흰 티, 검정 반바지, 검정 스니커즈)이 보인다
 const outfitPart = (name: string) => /^(top|pants|shoes)d?_(.+)$/.exec(name);
 
 /** 참고 이미지처럼 부드러운 질감. 거친 윤곽선 대신 은은한 음영으로 입체감을 낸다 */
@@ -482,7 +483,7 @@ export class CharacterRig {
       const part = outfitPart(m.name);
       if (part) {
         const kind = part[1] as "top" | "pants" | "shoes";
-        const want = (OUTFIT_SET[equipped.outfit ?? ""] ?? BASIC_SET)[kind];
+        const want = ITEM_MESH[equipped[kind] ?? ""] ?? "basic";
         m.visible = part[2] === (have.has(`${kind}_${want}`) ? want : "basic");
       }
       // 얼굴(눈·눈썹·홍조)은 텍스처에 구워져 있다. 게임 장면이 평평한 톤이라 텍스처를 약하게 스스로 빛나게 한다
