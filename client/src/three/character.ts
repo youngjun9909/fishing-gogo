@@ -22,17 +22,20 @@ export function loadCharacterModel(): Promise<void> {
   const loader = new GLTFLoader();
   glbLoading ??= Promise.all([
     loader.loadAsync("/models/body_outfits.glb").then((g) => { glb = g.scene; }),
-    new THREE.TextureLoader().loadAsync("/models/scalp_f.png").then((t) => { t.flipY = false; scalpF = t; }).catch(() => undefined),
-    new THREE.TextureLoader().loadAsync("/models/scalp_m.png").then((t) => { t.flipY = false; scalpM = t; }).catch(() => undefined),
-    new THREE.TextureLoader().loadAsync("/models/eye_f.png").then((t) => { t.flipY = false; eyeF = t; }).catch(() => undefined),
-    new THREE.TextureLoader().loadAsync("/models/eye_m.png").then((t) => { t.flipY = false; eyeM = t; }).catch(() => undefined),
-    loader.loadAsync("/models/body_male.glb").then((g) => { glbMale = g.scene; }).catch(() => undefined),
-    ...HAIR_FILES.map((f, i) => loader.loadAsync(`/models/${f}.glb`).then((g) => { hairGlbs[i] = g.scene; }).catch(() => undefined)),
-    ...HAIR_FILES_M.map((f, i) => loader.loadAsync(`/models/${f}.glb`).then((g) => { hairGlbsM[i] = g.scene; }).catch(() => undefined)),
-  ]).then(() => undefined, (e) => { console.warn("캐릭터 모델을 못 불러와서 기본 모양을 써요", e); });
+    new THREE.TextureLoader().loadAsync("/models/scalp_f.png").then((t) => { t.flipY = false; scalpF = t; }),
+    new THREE.TextureLoader().loadAsync("/models/scalp_m.png").then((t) => { t.flipY = false; scalpM = t; }),
+    new THREE.TextureLoader().loadAsync("/models/eye_f.png").then((t) => { t.flipY = false; eyeF = t; }),
+    new THREE.TextureLoader().loadAsync("/models/eye_m.png").then((t) => { t.flipY = false; eyeM = t; }),
+    loader.loadAsync("/models/body_male.glb").then((g) => { glbMale = g.scene; }),
+    ...HAIR_FILES.map((f, i) => loader.loadAsync(`/models/${f}.glb`).then((g) => { hairGlbs[i] = g.scene; })),
+    ...HAIR_FILES_M.map((f, i) => loader.loadAsync(`/models/${f}.glb`).then((g) => { hairGlbsM[i] = g.scene; })),
+  ]).then(() => undefined, (e) => {
+    // 일부만 받아진 채로 시작하면 머리카락·눈 색 등이 빠진 모습이 되니, 실패로 알리고 다시 시도하게 한다
+    glbLoading = null;
+    throw e;
+  });
   return glbLoading;
 }
-void loadCharacterModel();
 
 /** 머리카락 뿌리는 어둡게, 끝은 밝게 정점 색을 넣어 깊이감을 낸다(머리 중심에서 멀수록 밝음) */
 function rootToTipColors(root: THREE.Object3D) {
