@@ -3,7 +3,7 @@ import { BASE_MAPS, CODEX_REWARDS, ITEMS, SPECIES, codexSpeciesFor, itemById, se
 import type { Appearance, CatchRecord, CodexEntry, MapId, PlayerProfile, ShopItem } from "@fishing/shared";
 import { getAudio, setMuted, setVolume, sfx } from "../audio";
 import { api } from "../net";
-import { HAIR } from "../three/character";
+import { EYE, HAIR } from "../three/character";
 import { LobbyScene } from "../three/LobbyScene";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
 
@@ -361,7 +361,7 @@ function Creator({ profile, onPreview, onEmote, onRotate, onFace, onDone, onCanc
   };
   const randomize = () => {
     const r = (n: number) => Math.floor(Math.random() * n);
-    const next: Appearance = { ...a, hair: r(4), hairColor: r(HAIR.length) };
+    const next: Appearance = { ...a, hair: r(4), hairColor: r(HAIR.length), eyeColor: r(EYE.length) };
     setA(next);
     onPreview({ appearance: next, equipped: profile.equipped });
   };
@@ -411,6 +411,14 @@ function Creator({ profile, onPreview, onEmote, onRotate, onFace, onDone, onCanc
           <div className="opts">
             {HAIR.map((c, i) => (
               <button key={i} className={`swatch ${a.hairColor === i ? "on" : ""}`} style={{ background: c }} onClick={() => set("hairColor", i)} aria-label={`머리색 ${i + 1}`} />
+            ))}
+          </div>
+        </div>
+        <div className="row">
+          <label>눈동자 색 (눈썹은 머리색을 따라가요)</label>
+          <div className="opts">
+            {EYE.map((c, i) => (
+              <button key={i} className={`swatch ${a.eyeColor === i ? "on" : ""}`} style={{ background: c }} onClick={() => set("eyeColor", i)} aria-label={`눈동자 색 ${i + 1}`} />
             ))}
           </div>
         </div>

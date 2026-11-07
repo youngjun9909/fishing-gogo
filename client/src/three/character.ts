@@ -9,6 +9,8 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 let glb: THREE.Group | null = null;
 let scalpF: THREE.Texture | null = null; // 마네킹 머리 그림에서 정수리·뒷머리 부분(흰색)을 표시한 마스크. 이 부분에 머리색을 칠한다
 let scalpM: THREE.Texture | null = null;
+let eyeF: THREE.Texture | null = null; // 몸 그림에서 눈동자(R)와 눈썹(G) 자리를 표시한 마스크. 눈동자는 고른 색, 눈썹은 머리색으로 칠한다
+let eyeM: THREE.Texture | null = null;
 let glbMale: THREE.Group | null = null; // 남자 몸(성별 1). 파일이 없으면 여자 몸을 쓴다
 const HAIR_FILES = ["hair_1_ponytail", "hair_2_twintail", "hair_3_bob", "hair_4_long"];
 const hairGlbs: Array<THREE.Group | null> = [null, null, null, null];
@@ -21,6 +23,8 @@ export function loadCharacterModel(): Promise<void> {
     loader.loadAsync("/models/body_outfits.glb").then((g) => { glb = g.scene; }),
     new THREE.TextureLoader().loadAsync("/models/scalp_f.png").then((t) => { t.flipY = false; scalpF = t; }).catch(() => undefined),
     new THREE.TextureLoader().loadAsync("/models/scalp_m.png").then((t) => { t.flipY = false; scalpM = t; }).catch(() => undefined),
+    new THREE.TextureLoader().loadAsync("/models/eye_f.png").then((t) => { t.flipY = false; eyeF = t; }).catch(() => undefined),
+    new THREE.TextureLoader().loadAsync("/models/eye_m.png").then((t) => { t.flipY = false; eyeM = t; }).catch(() => undefined),
     loader.loadAsync("/models/body_male.glb").then((g) => { glbMale = g.scene; }).catch(() => undefined),
     ...HAIR_FILES.map((f, i) => loader.loadAsync(`/models/${f}.glb`).then((g) => { hairGlbs[i] = g.scene; }).catch(() => undefined)),
     ...HAIR_FILES_M.map((f, i) => loader.loadAsync(`/models/${f}.glb`).then((g) => { hairGlbsM[i] = g.scene; }).catch(() => undefined)),
@@ -486,18 +490,32 @@ export class CharacterRig {
       m.material = new THREE.MeshStandardMaterial({ map: src.map, roughness: 0.8, emissive: new THREE.Color("#ffffff"), emissiveMap: src.map, emissiveIntensity: 0.22, side: part ? THREE.DoubleSide : THREE.FrontSide, alphaTest: part ? 0.5 : 0 }); // 옷은 한 겹짜리 껍질이라 양면, 가장자리는 알파로 오려낸다
       if (!part && src.map) {
         // 몸(머리 포함): 정수리와 뒷머리 부분에만 머리색을 칠한다(머리카락 틈으로 살색이 비치지 않게)
-        const mask = a.gender === 1 && scalpM ? scalpM : scalpF;
-        if (mask) {
+        const male = a.gender === 1;
+        const mask = male && scalpM ? scalpM : scalpF;
+        const eyeMask = male && eyeM ? eyeM : eyeF;
+        if (mask && eyeMask) {
           const mat = m.material as THREE.MeshStandardMaterial;
-          const sc = new THREE.Color(HAIR[a.hairColor % HAIR.length]).multiplyScalar(0.55);
-          mat.customProgramCacheKey = () => "scalp";
+          const hairC = new THREE.Color(HAIR[a.hairColor % HAIR.length]);
+          const sc = hairC.clone().multiplyScalar(0.55);
+          const irisC = new THREE.Color(EYE[a.eyeColor % EYE.length]);
+          const browC = hairC.clone().multiplyScalar(0.7); // 눈썹은 머리색보다 살짝 진하게
+          mat.customProgramCacheKey = () => "scalp-eye";
           mat.onBeforeCompile = (sh) => {
             sh.uniforms.uScalp = { value: mask };
             sh.uniforms.uScalpColor = { value: sc };
+            sh.uniforms.uEye = { value: eyeMask };
+            sh.uniforms.uIris = { value: irisC };
+            sh.uniforms.uBrow = { value: browC };
             sh.fragmentShader = sh.fragmentShader
-              .replace("#include <common>", "#include <common>\nuniform sampler2D uScalp;\nuniform vec3 uScalpColor;")
-              .replace("#include <map_fragment>", "#include <map_fragment>\nfloat scalpM = texture2D(uScalp, vMapUv).r;\ndiffuseColor.rgb = mix(diffuseColor.rgb, uScalpColor, scalpM);")
-              .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance *= (1.0 - scalpM * 0.9);");
+              .replace("#include <common>", "#include <common>\nuniform sampler2D uScalp;\nuniform vec3 uScalpColor;\nuniform sampler2D uEye;\nuniform vec3 uIris;\nuniform vec3 uBrow;")
+              .replace("#include <map_fragment>", `#include <map_fragment>
+float scalpM = texture2D(uScalp, vMapUv).r;
+vec2 eyeMk = texture2D(uEye, vMapUv).rg;
+float lumE = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+diffuseColor.rgb = mix(diffuseColor.rgb, uScalpColor, scalpM);
+diffuseColor.rgb = mix(diffuseColor.rgb, uIris * (lumE / 0.26), eyeMk.r);
+diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
+              .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance *= (1.0 - scalpM * 0.9) * (1.0 - clamp(eyeMk.r * 0.9 + eyeMk.g * 0.5, 0.0, 1.0));");
           };
         }
       }
