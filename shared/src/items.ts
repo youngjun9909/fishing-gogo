@@ -13,6 +13,7 @@ export interface ShopItem {
 }
 
 export const ITEMS: ShopItem[] = [
+  { id: "outfit-hoodie", name: "후드티 코디", slot: "outfit", price: 400, purchasable: true },
   { id: "outfit-overalls", name: "멜빵바지", slot: "outfit", price: 300, purchasable: true },
   { id: "outfit-raincoat", name: "노란 우비", slot: "outfit", price: 500, purchasable: true },
   { id: "outfit-hanbok", name: "한복", slot: "outfit", price: 900, purchasable: true },

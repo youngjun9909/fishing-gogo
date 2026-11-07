@@ -21,7 +21,7 @@ export interface StoredMap {
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
-  eyes: 0, nose: 0, mouth: 0, hair: 0, skinColor: 0, hairColor: 0, eyeColor: 0, body: 0,
+  eyes: 0, nose: 0, mouth: 0, hair: 0, skinColor: 0, hairColor: 0, eyeColor: 0, body: 0, gender: 0,
 };
 
 export function newProfile(id: string, nickname: string, appearance = DEFAULT_APPEARANCE): PlayerProfile {

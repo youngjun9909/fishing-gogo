@@ -7,13 +7,14 @@ import { DEFAULT_APPEARANCE, newProfile } from "./store";
 import type { PlayerStore, StoredMap } from "./store";
 
 const LIMITS: Record<keyof Appearance, number> = {
-  eyes: 10, nose: 6, mouth: 8, hair: 15, skinColor: 12, hairColor: 12, eyeColor: 12, body: 3,
+  eyes: 10, nose: 6, mouth: 8, hair: 15, skinColor: 12, hairColor: 12, eyeColor: 12, body: 3, gender: 2,
 };
 
 export function validAppearance(a: unknown): a is Appearance {
   if (!a || typeof a !== "object") return false;
   return (Object.keys(LIMITS) as (keyof Appearance)[]).every((k) => {
     const v = (a as Record<string, unknown>)[k];
+    if (k === "gender" && v === undefined) return true;
     return Number.isInteger(v) && (v as number) >= 0 && (v as number) < LIMITS[k];
   });
 }

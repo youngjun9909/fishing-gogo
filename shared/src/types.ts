@@ -34,6 +34,8 @@ export interface Appearance {
   hairColor: number;
   eyeColor: number;
   body: number;
+  /** 0 여자, 1 남자. 옛 저장 데이터에는 없을 수 있다(없으면 여자) */
+  gender?: number;
 }
 
 export interface PlayerProfile {

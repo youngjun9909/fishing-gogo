@@ -87,3 +87,21 @@ export function lerpAngle(a: number, b: number, t: number) {
   if (d < -Math.PI) d += Math.PI * 2;
   return a + d * t;
 }
+
+/** 뼈대로 움직이는 몸에도 윤곽선을 둘러준다(뒤집은 껍질을 법선 방향으로 부풀림) */
+export function addSkinnedOutline(root: THREE.Object3D, thickness = 0.0035, color = 0x5a4350) {
+  const meshes: THREE.SkinnedMesh[] = [];
+  root.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) meshes.push(o as THREE.SkinnedMesh); });
+  for (const m of meshes) {
+    const mat = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide });
+    mat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>\n  transformed += normalize(objectNormal) * ${thickness.toFixed(5)};`);
+    };
+    const o = new THREE.SkinnedMesh(m.geometry, mat);
+    o.bind(m.skeleton, m.bindMatrix);
+    o.userData.isOutline = true;
+    o.frustumCulled = false;
+    m.parent!.add(o);
+    o.position.copy(m.position); o.quaternion.copy(m.quaternion); o.scale.copy(m.scale);
+  }
+}

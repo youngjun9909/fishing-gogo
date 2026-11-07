@@ -57,6 +57,7 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
   const [chat, setChat] = useState<Array<{ id: number; name: string; text: string }>>([]);
   const [rank, setRank] = useState<RankMsg>({ value: [], count: [], biggest: [] });
   const [rankTab, setRankTab] = useState<"value" | "count" | "biggest">("value");
+  const [rankOpen, setRankOpen] = useState(() => window.innerWidth > 720); // 좁은 화면에서는 접어 둔다
   const [toast, setToast] = useState("");
   const [announce, setAnnounce] = useState<{ text: string; rarity: Rarity } | null>(null);
   const [power, setPower] = useState(0);
@@ -172,7 +173,7 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
   const rows = rank[rankTab];
 
   const hint =
-    phase === "idle" ? "마우스(스페이스)를 꾹 눌렀다 놓으면 낚싯대를 던져요"
+    phase === "idle" ? (isTouch ? "🎣 버튼을 꾹 눌렀다 놓으면 낚싯대를 던져요" : "마우스(스페이스)를 꾹 눌렀다 놓으면 낚싯대를 던져요")
       : phase === "waiting" ? "찌를 지켜봐요... (C: 거두기)"
         : phase === "bite" ? "지금이에요! 클릭!"
           : "초록 칸에 맞춰 클릭!";
@@ -180,9 +181,9 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
   return (
     <>
       <div className="stage" ref={stage} />
-      <div className="overlay">
+      <div className={`overlay ${isTouch ? "touch" : ""}`}>
         <div className="hud-tl">
-          <div className="panel chip" style={{ fontSize: 20 }}>
+          <div className="panel chip invite">
             초대 코드 <b style={{ letterSpacing: 4, fontWeight: "normal", color: "var(--pink-deep)" }}>{code}</b>
             <button className="btn small pink" onClick={async () => setToast(await shareInvite(code, map?.name ?? ""))}>친구 초대</button>
           </div>
@@ -195,7 +196,8 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
         </div>
 
         <div className="hud-tr">
-          <div className="rank panel">
+          <div className={`rank panel ${rankOpen ? "" : "closed"}`}>
+            <button className="rank-toggle tab on" onClick={() => setRankOpen((o) => !o)}>🏆 순위 {rankOpen ? "▲" : "▼"}</button>
             <div className="tabs">
               <button className={`tab ${rankTab === "value" ? "on" : ""}`} onClick={() => setRankTab("value")}>💰 가치</button>
               <button className={`tab ${rankTab === "count" ? "on" : ""}`} onClick={() => setRankTab("count")}>🐟 마릿수</button>

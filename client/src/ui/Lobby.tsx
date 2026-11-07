@@ -3,7 +3,7 @@ import { BASE_MAPS, CODEX_REWARDS, ITEMS, SPECIES, codexSpeciesFor, itemById, se
 import type { Appearance, CatchRecord, CodexEntry, MapId, PlayerProfile, ShopItem } from "@fishing/shared";
 import { getAudio, setMuted, setVolume, sfx } from "../audio";
 import { api } from "../net";
-import { EYE, HAIR, SKIN } from "../three/character";
+import { HAIR } from "../three/character";
 import { LobbyScene } from "../three/LobbyScene";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
 
@@ -38,8 +38,11 @@ export function Lobby(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
-    sceneRef.current?.setLook(look);
-  }, [look]);
+    if (!creating) sceneRef.current?.setLook(look); // 꾸미는 중에는 프로필을 다시 읽어도 미리보기를 덮어쓰지 않는다
+  }, [look, creating]);
+  useEffect(() => {
+    sceneRef.current?.setCreatorMode(creating);
+  }, [creating]);
 
   const open = (m: Modal) => {
     sfx.click();
@@ -76,6 +79,8 @@ export function Lobby(props: {
             profile={profile}
             onPreview={(l) => sceneRef.current?.setLook(l)}
             onEmote={(e) => sceneRef.current?.playEmote(e)}
+            onRotate={(r) => sceneRef.current?.rotateBy(r)}
+            onFace={(r) => sceneRef.current?.faceTo(r)}
             onDone={async () => {
               await props.reload();
               setCreating(false);
@@ -330,42 +335,25 @@ function Settings({ onClose, onLogout }: { onClose: () => void; onLogout: () => 
   );
 }
 
-// ---- 캐릭터 만들기 ----------------------------------------------------
-const FIELDS: Array<{ key: keyof Appearance; label: string; n: number }> = [
-  { key: "eyes", label: "눈 모양", n: 10 },
-  { key: "nose", label: "코", n: 6 },
-  { key: "mouth", label: "입", n: 8 },
-  { key: "hair", label: "머리 스타일", n: 15 },
-  { key: "body", label: "체형", n: 3 },
-];
-const COLORS: Array<{ key: keyof Appearance; label: string; list: string[] }> = [
-  { key: "skinColor", label: "피부색", list: SKIN },
-  { key: "hairColor", label: "머리색", list: HAIR },
-  { key: "eyeColor", label: "눈동자색", list: EYE },
+// ---- 캐릭터 만들기 (성별, 머리 스타일, 머리색만 바꾼다) ----------------------
+const HAIR_NAMES = [
+  ["포니테일", "양갈래", "단발", "긴 생머리"],
+  ["웨이브 펌", "가르마", "덮은 앞머리", "헝클머리"],
 ];
 
-// 눈, 코, 입, 머리, 피부, 머리색, 눈동자색, 체형
-const PRESETS: Array<[string, Appearance]> = [
-  ["상큼 소녀", { eyes: 1, nose: 1, mouth: 0, hair: 4, skinColor: 0, hairColor: 2, eyeColor: 2, body: 0 }],
-  ["씩씩 소년", { eyes: 0, nose: 0, mouth: 1, hair: 2, skinColor: 2, hairColor: 0, eyeColor: 1, body: 1 }],
-  ["벚꽃 친구", { eyes: 5, nose: 3, mouth: 3, hair: 5, skinColor: 7, hairColor: 6, eyeColor: 9, body: 0 }],
-  ["어부 아저씨", { eyes: 3, nose: 2, mouth: 5, hair: 12, skinColor: 4, hairColor: 4, eyeColor: 0, body: 2 }],
-  ["달콤 곱슬", { eyes: 6, nose: 1, mouth: 6, hair: 11, skinColor: 5, hairColor: 1, eyeColor: 1, body: 1 }],
-  ["민트 요정", { eyes: 4, nose: 5, mouth: 2, hair: 13, skinColor: 8, hairColor: 8, eyeColor: 3, body: 0 }],
-  ["하늘 모험가", { eyes: 9, nose: 0, mouth: 0, hair: 9, skinColor: 1, hairColor: 7, eyeColor: 10, body: 1 }],
-  ["펑크 낚시꾼", { eyes: 7, nose: 4, mouth: 7, hair: 8, skinColor: 3, hairColor: 5, eyeColor: 5, body: 1 }],
-];
-
-function Creator({ profile, onPreview, onEmote, onDone, onCancel }: {
+function Creator({ profile, onPreview, onEmote, onRotate, onFace, onDone, onCancel }: {
   profile: PlayerProfile;
   onPreview: (l: { appearance: Appearance; equipped: Record<string, string> }) => void;
   onEmote: (e: string) => void;
+  onRotate: (rad: number) => void;
+  onFace: (rad: number) => void;
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const [a, setA] = useState<Appearance>(profile.appearance);
+  const [a, setA] = useState<Appearance>({ ...profile.appearance, gender: profile.appearance.gender ?? 0 });
   const [name, setName] = useState(profile.nickname === "낚시꾼" ? "" : profile.nickname);
   const [err, setErr] = useState("");
+  const g = a.gender === 1 ? 1 : 0;
   const set = (k: keyof Appearance, v: number) => {
     const next = { ...a, [k]: v };
     setA(next);
@@ -373,7 +361,7 @@ function Creator({ profile, onPreview, onEmote, onDone, onCancel }: {
   };
   const randomize = () => {
     const r = (n: number) => Math.floor(Math.random() * n);
-    const next: Appearance = { eyes: r(10), nose: r(6), mouth: r(8), hair: r(15), skinColor: r(12), hairColor: r(12), eyeColor: r(12), body: r(3) };
+    const next: Appearance = { ...a, hair: r(4), hairColor: r(HAIR.length) };
     setA(next);
     onPreview({ appearance: next, equipped: profile.equipped });
   };
@@ -393,33 +381,39 @@ function Creator({ profile, onPreview, onEmote, onDone, onCancel }: {
       <input className="field" placeholder="닉네임 (1~10글자)" maxLength={10} value={name} onChange={(e) => setName(e.target.value)} />
       <div className="scroll">
         <div className="row">
-          <label>추천 모습 (눌러서 바꿔 봐요)</label>
+          <label>돌려 보기 (캐릭터를 끌어도 돌아요)</label>
           <div className="opts">
-            {PRESETS.map(([n, p]) => (
-              <button key={n} className="opt" onClick={() => { setA(p); onPreview({ appearance: p, equipped: profile.equipped }); }}>{n}</button>
+            <button className="opt" onClick={() => onRotate(-Math.PI / 4)}>⟲</button>
+            <button className="opt" onClick={() => onRotate(Math.PI / 4)}>⟳</button>
+            <button className="opt" onClick={() => onFace(0)}>앞</button>
+            <button className="opt" onClick={() => onFace(Math.PI / 2)}>옆</button>
+            <button className="opt" onClick={() => onFace(Math.PI)}>뒤</button>
+          </div>
+        </div>
+        <div className="row">
+          <label>성별</label>
+          <div className="opts">
+            {["여자", "남자"].map((n, i) => (
+              <button key={n} className={`opt ${g === i ? "on" : ""}`} onClick={() => set("gender", i)}>{n}</button>
             ))}
           </div>
         </div>
-        {FIELDS.map((f) => (
-          <div className="row" key={f.key}>
-            <label>{f.label}</label>
-            <div className="opts">
-              {Array.from({ length: f.n }, (_, i) => (
-                <button key={i} className={`opt ${a[f.key] === i ? "on" : ""}`} onClick={() => set(f.key, i)}>{i + 1}</button>
-              ))}
-            </div>
+        <div className="row">
+          <label>머리 스타일</label>
+          <div className="opts">
+            {HAIR_NAMES[g].map((n, i) => (
+              <button key={n} className={`opt ${a.hair % 4 === i ? "on" : ""}`} onClick={() => set("hair", i)}>{n}</button>
+            ))}
           </div>
-        ))}
-        {COLORS.map((f) => (
-          <div className="row" key={f.key}>
-            <label>{f.label}</label>
-            <div className="opts">
-              {f.list.map((c, i) => (
-                <button key={i} className={`swatch ${a[f.key] === i ? "on" : ""}`} style={{ background: c }} onClick={() => set(f.key, i)} aria-label={`${f.label} ${i + 1}`} />
-              ))}
-            </div>
+        </div>
+        <div className="row">
+          <label>머리색</label>
+          <div className="opts">
+            {HAIR.map((c, i) => (
+              <button key={i} className={`swatch ${a.hairColor === i ? "on" : ""}`} style={{ background: c }} onClick={() => set("hairColor", i)} aria-label={`머리색 ${i + 1}`} />
+            ))}
           </div>
-        ))}
+        </div>
         <div className="row">
           <label>이모트 미리보기</label>
           <div className="opts">

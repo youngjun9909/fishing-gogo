@@ -60,13 +60,15 @@ interface Peer {
 
 const SPEED = 6.5;
 
-function textSprite(text: string, opts: { bg: string; fg: string; size: number; sub?: string }) {
+function textSprite(text: string, opts: { bg: string; fg: string; size: number; sub?: string; subFg?: string; compact?: boolean }) {
   const c = document.createElement("canvas");
   const g = c.getContext("2d")!;
   const font = `${opts.size}px 'Jua', 'Malgun Gothic', sans-serif`;
   g.font = font;
-  const w = Math.ceil(Math.max(g.measureText(text).width, opts.sub ? g.measureText(opts.sub).width * 0.7 : 0)) + 44;
-  const h = opts.size + 30 + (opts.sub ? 26 : 0);
+  const lines = text.split("\n"); // 줄바꿈은 채팅 말풍선용
+  const lineH = opts.size * 1.15;
+  const w = Math.ceil(Math.max(...lines.map((l) => g.measureText(l).width), opts.sub ? g.measureText(opts.sub).width * 0.7 : 0)) + (opts.compact ? 30 : 44);
+  const h = Math.round(opts.size + (lines.length - 1) * lineH + (opts.compact ? 16 : 30) + (opts.sub ? 26 : 0));
   c.width = w;
   c.height = h;
   g.font = font;
@@ -79,15 +81,15 @@ function textSprite(text: string, opts: { bg: string; fg: string; size: number; 
   g.textBaseline = "middle";
   if (opts.sub) {
     g.font = `${Math.round(opts.size * 0.62)}px 'Jua', sans-serif`;
-    g.fillStyle = "#c2780f";
+    g.fillStyle = opts.subFg ?? "#c2780f";
     g.fillText(opts.sub, w / 2, 20);
     g.font = font;
     g.fillStyle = opts.fg;
     g.fillText(text, w / 2, h / 2 + 12);
-  } else g.fillText(text, w / 2, h / 2 + 2);
+  } else lines.forEach((l, i) => g.fillText(l, w / 2, h / 2 + 2 + (i - (lines.length - 1) / 2) * lineH));
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, fog: false, toneMapped: false }));
   const k = 0.012;
   s.scale.set(w * k, h * k, 1);
   s.renderOrder = 20;
@@ -300,8 +302,13 @@ export class GameScene {
 
   private showBubble(peer: Peer, text: string) {
     if (peer.bubble) peer.rig.root.remove(peer.bubble);
-    peer.bubble = textSprite(text.length > 28 ? text.slice(0, 28) + "…" : text, { bg: "rgba(255,255,255,0.95)", fg: "#4a3b52", size: 34 });
-    peer.bubble.position.set(0, 3.55, 0);
+    // 14자마다 줄을 바꿔 가로로 너무 길어지지 않게 한다(최대 28자)
+    const cut = text.length > 28 ? text.slice(0, 28) + "…" : text;
+    const wrapped = cut.length > 14 ? cut.slice(0, 14) + "\n" + cut.slice(14) : cut;
+    peer.bubble = textSprite(wrapped, { bg: "rgba(255,255,255,0.95)", fg: "#4a3b52", size: 28 });
+    // 닉네임표 바로 위에 아랫변을 맞춰 쌓는다(서로 가리지 않게)
+    peer.bubble.center.set(0.5, 0);
+    peer.bubble.position.set(0, peer.tag.position.y + peer.tag.scale.y / 2 + 0.1, 0);
     peer.rig.root.add(peer.bubble);
     peer.bubbleUntil = performance.now() + 5000;
   }
@@ -361,8 +368,9 @@ export class GameScene {
     this.scene.add(rig.root);
 
     const tagText = p.name;
-    const tag = textSprite(p.name, { bg: "rgba(255,255,255,0.9)", fg: "#4a3b52", size: 34, sub: p.title || undefined });
-    tag.position.set(0, 3.05 + (p.title ? 0.2 : 0), 0);
+    // 닉네임표는 작고 어두운 이름표로 만들어 흰 채팅 말풍선과 헷갈리지 않게 한다
+    const tag = textSprite(p.name, { bg: "rgba(74,59,82,0.72)", fg: "#ffffff", size: 28, sub: p.title || undefined, subFg: "#ffd45a", compact: true });
+    tag.position.set(0, 3.0 + tag.scale.y / 2, 0); // 표의 아랫변이 머리 위 3.0에 오도록
     rig.root.add(tag);
 
     const lineGeo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 22 }, () => new THREE.Vector3()));
@@ -506,7 +514,7 @@ export class GameScene {
         if (!peer.alert) {
           peer.alert = textSprite("!", { bg: "#ff6b6b", fg: "#ffffff", size: 56 });
           peer.alert.scale.multiplyScalar(0.5);
-          peer.alert.position.set(0, 3.7, 0);
+          peer.alert.position.set(0, peer.tag.position.y + peer.tag.scale.y / 2 + 0.3, 0);
           peer.rig.root.add(peer.alert);
           this.world.ripple(bx, bz);
         }
