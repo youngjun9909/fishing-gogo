@@ -1,3 +1,4 @@
+import { buildAura } from "./auras";
 import * as THREE from "three";
 import type { Appearance } from "@fishing/shared";
 import { lerpAngle } from "./engine";
@@ -374,35 +375,6 @@ function bangs(color: string): THREE.Group {
   return g;
 }
 
-function hatGroup(id: string): THREE.Group | null {
-  const g = new THREE.Group();
-  if (id === "hat-straw") {
-    const brim = addOutline(new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 0.06, 32), toon("#f3d58a")), 0.02);
-    const top = addOutline(new THREE.Mesh(new THREE.SphereGeometry(0.45, 24, 14, 0, Math.PI * 2, 0, Math.PI / 2), toon("#f3d58a")), 0.025);
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.455, 0.455, 0.1, 24), toon("#e06a6a"));
-    band.position.y = 0.06;
-    top.position.y = 0.02;
-    g.add(brim, top, band);
-    g.position.y = 0.45;
-  } else if (id === "hat-beanie") {
-    const d = addOutline(new THREE.Mesh(new THREE.SphereGeometry(0.63, 28, 16, 0, Math.PI * 2, 0, Math.PI * 0.55), toon("#7fb6e8")), 0.025);
-    const pom = addOutline(new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 10), toon("#ffffff")), 0.03);
-    pom.position.y = 0.7;
-    g.add(d, pom);
-    g.position.y = 0.05;
-  } else if (id === "hat-captain") {
-    const top = addOutline(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.58, 0.28, 28), toon("#f5f5f5")), 0.025);
-    const bill = addOutline(new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.05, 20, 1, false, 0, Math.PI), toon("#2b3a55")), 0.03);
-    bill.position.set(0, -0.1, 0.5);
-    bill.rotation.x = Math.PI / 2 - 0.3;
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.585, 0.585, 0.08, 28), toon("#2b3a55"));
-    band.position.y = -0.08;
-    g.add(top, band, bill);
-    g.position.y = 0.52;
-  } else return null;
-  return g;
-}
-
 const EMOTE_ICON: Record<string, string> = {
   wave: "👋", angry: "💢", aegyo: "💕", dance: "🎵", cry: "💧", "legend-bow": "✨",
 };
@@ -450,6 +422,7 @@ export class CharacterRig {
   readonly rodTip = new THREE.Object3D();
   private rod = new THREE.Group();
   private auraGroup: THREE.Group | null = null;
+  private auraFx: { update: (t: number) => void } | null = null; // 새 오라 5종(auras.ts)
   private icon: THREE.Sprite | null = null;
   private emote = "";
   private emoteT = 0;
@@ -574,9 +547,6 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
       if (b) this.driven.push({ bone: b, rest: m0.clone().multiply(b.getWorldQuaternion(new THREE.Quaternion())), key });
     }
     model.traverse((o) => { if (o.name === "eyeL" || o.name === "eyeR") this.eyes.push(o); });
-
-    const hat = equipped.hat ? hatGroup(equipped.hat) : null;
-    if (hat) this.head.add(hat);
 
     // 낚싯대는 낚시 중에만 보이고 왼쪽 위 팔(옛 armR)의 손 위치에 붙인다
     const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 2.2, 8), toon("#9a6a3a"));
@@ -729,8 +699,6 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
     neck.position.y = -0.62;
     this.head.add(neck);
     this.head.add(buildHair(a.hair, HAIR[a.hairColor % HAIR.length]));
-    const hat = equipped.hat ? hatGroup(equipped.hat) : null;
-    if (hat) this.head.add(hat);
     this.body.add(this.head);
 
     // 낚싯대는 오른손에 들고, 낚시 중이 아니면 숨긴다
@@ -749,6 +717,12 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
   }
 
   private makeAura(id: string) {
+    const fx = buildAura(id);
+    if (fx) {
+      this.root.add(fx.group);
+      this.auraFx = fx;
+      return;
+    }
     const g = new THREE.Group();
     const color = id === "aura-bubble" ? 0x9fe3ff : id === "aura-legend" ? 0xffd45a : 0xfff1a8;
     const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: id === "aura-bubble" ? 0.55 : 0.9 });
@@ -856,6 +830,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
 
     this.poseBones();
 
+    this.auraFx?.update(this.t);
     if (this.auraGroup) {
       const id = this.auraGroup.userData.id as string;
       this.auraGroup.children.forEach((c, i) => {

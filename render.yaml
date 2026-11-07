@@ -1,0 +1,22 @@
+# Render에 게임 서버를 올리는 설정(Blueprint). 화면(client)은 Vercel에 올린다.
+# 키 값은 이 파일에 쓰지 않는다. sync: false 인 값은 Render 화면에서 직접 넣는다.
+services:
+  - type: web
+    name: fishing-gogo-server
+    runtime: node
+    plan: free
+    region: singapore # 한국에서 가장 가까운 지역
+    buildCommand: npm ci --include=dev # 서버 실행기(tsx)가 devDependencies라서 함께 설치한다
+    startCommand: npm start -w server
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      # 처음 올려서 시험할 때만 true. 카카오 로그인을 연결한 뒤에는 반드시 false로 바꾼다
+      - key: ALLOW_DEV_LOGIN
+        value: "true"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false

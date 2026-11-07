@@ -41,7 +41,7 @@ describe("로비 API", () => {
     const sold = await call("/api/sell", "shopper", { ids: [record.id] });
     expect(sold.json.earned).toBeGreaterThan(0);
     expect((await call("/api/shop", "shopper")).json.length).toBeGreaterThan(0);
-    const bought = await call("/api/buy", "shopper", { itemId: "hat-straw" });
+    const bought = await call("/api/buy", "shopper", { itemId: "top-hoodie" });
     expect([200, 400]).toContain(bought.status);
   });
 });

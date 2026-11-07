@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BASE_MAPS, CODEX_REWARDS, ITEMS, SPECIES, codexSpeciesFor, itemById, sellPrice, speciesById } from "@fishing/shared";
 import type { Appearance, CatchRecord, CodexEntry, MapId, PlayerProfile, ShopItem } from "@fishing/shared";
 import { getAudio, setMuted, setVolume, sfx } from "../audio";
-import { api } from "../net";
+import { api, auth } from "../net";
 import { EYE, HAIR } from "../three/character";
 import { LobbyScene } from "../three/LobbyScene";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
@@ -98,7 +98,7 @@ export function Lobby(props: {
       {modal === "inventory" && <Inventory onClose={() => setModal(null)} reload={props.reload} />}
       {modal === "codex" && <Codex onClose={() => setModal(null)} profile={profile} />}
       {modal === "shop" && <Shop onClose={() => setModal(null)} profile={profile} reload={props.reload} />}
-      {modal === "settings" && <Settings onClose={() => setModal(null)} onLogout={props.onLogout} />}
+      {modal === "settings" && <Settings onClose={() => setModal(null)} onLogout={props.onLogout} reload={props.reload} />}
     </>
   );
 }
@@ -260,8 +260,8 @@ function Codex({ onClose, profile }: { onClose: () => void; profile: PlayerProfi
   );
 }
 
-const SLOT_NAME = { top: "상의", pants: "하의", shoes: "신발", hat: "모자", aura: "오라" } as const;
-const SLOT_EMOJI = { top: "👕", pants: "👖", shoes: "👟", hat: "🎩", aura: "✨" } as const;
+const SLOT_NAME = { top: "상의", pants: "하의", shoes: "신발", aura: "오라" } as const;
+const SLOT_EMOJI = { top: "👕", pants: "👖", shoes: "👟", aura: "✨" } as const;
 
 function Shop({ onClose, profile, reload }: { onClose: () => void; profile: PlayerProfile; reload: () => Promise<void> }) {
   const [slot, setSlot] = useState<ShopItem["slot"]>("top");
@@ -283,7 +283,7 @@ function Shop({ onClose, profile, reload }: { onClose: () => void; profile: Play
   return (
     <Modal title={`🛍️ 상점  🪙 ${profile.coins.toLocaleString()}`} onClose={onClose}>
       <div className="tabs">
-        {(["top", "pants", "shoes", "hat", "aura"] as const).map((s) => (
+        {(["top", "pants", "shoes", "aura"] as const).map((s) => (
           <button key={s} className={`tab ${slot === s ? "on" : ""}`} onClick={() => setSlot(s)}>{SLOT_EMOJI[s]} {SLOT_NAME[s]}</button>
         ))}
         <span className="hint" style={{ alignSelf: "center" }}>{msg}</span>
@@ -316,8 +316,9 @@ function Shop({ onClose, profile, reload }: { onClose: () => void; profile: Play
   );
 }
 
-function Settings({ onClose, onLogout }: { onClose: () => void; onLogout: () => void }) {
+function Settings({ onClose, onLogout, reload }: { onClose: () => void; onLogout: () => void; reload: () => Promise<void> }) {
   const [a, setA] = useState(getAudio());
+  const [devMsg, setDevMsg] = useState("");
   return (
     <Modal title="⚙️ 설정" onClose={onClose} narrow>
       <div className="row">
@@ -330,6 +331,14 @@ function Settings({ onClose, onLogout }: { onClose: () => void; onLogout: () => 
           {a.muted ? "🔇 소리 꺼짐 (누르면 켜요)" : "🔊 소리 켜짐 (누르면 꺼요)"}
         </button>
       </div>
+      {auth.token?.startsWith("dev:") && (
+        <div className="row">
+          <button className="btn sun" onClick={async () => {
+            try { await api("/api/dev/grant", {}); await reload(); setDevMsg("돈 5000을 받았어요"); } catch (e) { setDevMsg(e instanceof Error ? e.message : ""); }
+          }}>🧪 개발용: 돈 5000 받기</button>
+          <p className="hint">{devMsg}</p>
+        </div>
+      )}
       <button className="btn pink" onClick={onLogout}>로그아웃</button>
     </Modal>
   );

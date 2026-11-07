@@ -50,7 +50,7 @@
 
 ## 5. 현재 게임 코드와의 관계 (확인한 사실)
 
-- `client/src/three/character.ts`는 `character.glb`의 재질 이름 `Sweater`, `Pants`, `Shoe`, `Sole`에 색을 칠한다. 즉 지금 옷은 **몸 메시에 색만 다른 재질**로 붙은 것이다.
+- (옛 방식, 지금은 쓰지 않음) 예전에는 `character.glb`의 재질 `Sweater`, `Pants`, `Shoe`, `Sole`에 색을 칠했다. 지금 옷은 `body_outfits.glb`·`body_male.glb` 안의 별도 옷 메시(top_/pants_/shoes_)를 아이템에 따라 보이게 하는 방식이다.
 - 이 문서의 목표는 옷을 **몸에서 분리된 별도 메시**로 만드는 것이다. 코드 변경은 이 세션 범위 밖이다.
 - 새 기본 몸(마스터 시트)은 남녀 마네킹이고 재질이 1개, 얼굴이 텍스처에 구워져 있다. 위의 `Sweater/Pants/Shoe/Sole` 재질 이름은 새 몸에 없을 것으로 본다(미확인: 새 몸을 게임에 아직 붙이지 않음).
 

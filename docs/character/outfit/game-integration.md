@@ -6,7 +6,7 @@
 - 남녀 뼈 축 기울기가 약 7도 달라 가중치는 남녀 각각 몸 기준으로 옮겨야 한다(시트 4절).
 
 ## 확인한 현재 상태
-- `client/public/models/character.glb`(몸), `hairs.glb`(머리카락)가 있다. 옷은 몸 모델 안의 재질 `Sweater`, `Pants`, `Shoe`, `Sole`로 칠해져 있다(`client/src/three/character.ts`).
+- (옛 방식, 지금은 쓰지 않음) 예전에는 `character.glb`(몸)와 `hairs.glb`(머리카락)를 썼다. 지금은 `body_outfits.glb`(여자), `body_male.glb`(남자), 머리카락 8종 GLB를 쓰고, 옷은 몸 모델 안의 옷 메시를 보이게 하는 방식이다(`client/src/three/character.ts`).
 - 옷을 별도 메시로 붙이는 코드는 아직 없다(코드는 건드리지 않음).
 
 ## 1. 기본 조건

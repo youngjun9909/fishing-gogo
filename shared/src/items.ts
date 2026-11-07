@@ -1,7 +1,7 @@
 import { codexSpeciesFor, SPECIES } from "./fish";
 import type { MapId } from "./types";
 
-export type ItemSlot = "top" | "pants" | "shoes" | "hat" | "aura";
+export type ItemSlot = "top" | "pants" | "shoes" | "aura";
 
 export interface ShopItem {
   id: string;
@@ -17,11 +17,13 @@ export const ITEMS: ShopItem[] = [
   { id: "top-hoodie", name: "남색 후드티", slot: "top", price: 200, purchasable: true },
   { id: "pants-jeans", name: "청바지", slot: "pants", price: 150, purchasable: true },
   { id: "shoes-white", name: "흰 운동화", slot: "shoes", price: 100, purchasable: true },
-  { id: "hat-straw", name: "밀짚모자", slot: "hat", price: 200, purchasable: true },
-  { id: "hat-beanie", name: "털모자", slot: "hat", price: 350, purchasable: true },
-  { id: "hat-captain", name: "선장 모자", slot: "hat", price: 700, purchasable: true },
   { id: "aura-sparkle", name: "반짝 오라", slot: "aura", price: 1500, purchasable: true },
   { id: "aura-bubble", name: "물방울 오라", slot: "aura", price: 2500, purchasable: true },
+  { id: "aura-flame", name: "불꽃 오라", slot: "aura", price: 3000, purchasable: true },
+  { id: "aura-sakura", name: "벚꽃 오라", slot: "aura", price: 3000, purchasable: true },
+  { id: "aura-lightning", name: "번개 오라", slot: "aura", price: 3500, purchasable: true },
+  { id: "aura-galaxy", name: "은하 오라", slot: "aura", price: 4500, purchasable: true },
+  { id: "aura-rainbow", name: "무지개 오라", slot: "aura", price: 5000, purchasable: true },
   { id: "aura-legend", name: "전설의 낚시꾼 오라", slot: "aura", price: 0, purchasable: false },
 ];
 

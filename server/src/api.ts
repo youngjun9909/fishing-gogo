@@ -18,6 +18,11 @@ export function createApi(
     "POST /api/sell": (id, b) => service.sell(id, Array.isArray(b.ids) ? b.ids : []),
     "POST /api/buy": (id, b) => service.buy(id, b.itemId),
     "POST /api/equip": (id, b) => service.equip(id, b.slot, b.itemId ?? null),
+    // 개발용 로그인 계정만: 돈을 받아 상점에서 직접 사 보게 한다(배포에서는 개발용 로그인이 꺼져 있다)
+    "POST /api/dev/grant": async (id) => {
+      if (!id.startsWith("dev:")) throw new Error("개발용 계정만 쓸 수 있어요");
+      return service.devGrant(id);
+    },
     "GET /api/maps": (id) => service.customMaps(id),
     "POST /api/maps": async (id, b) => {
       await service.saveCustomMap(id, { id: String(b.id), name: String(b.name ?? "내 맵"), data: b.data }, validateMap);

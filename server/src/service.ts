@@ -115,6 +115,14 @@ export class GameService {
     return p;
   }
 
+  /** 개발용: 돈 5000을 준다(아이템은 상점에서 직접 산다) */
+  async devGrant(playerId: string): Promise<PlayerProfile> {
+    const p = await this.mustProfile(playerId);
+    p.coins += 5000;
+    await this.store.saveProfile(p);
+    return p;
+  }
+
   canUseEmote(profile: PlayerProfile, emote: string): boolean {
     if ((EMOTES as readonly string[]).includes(emote)) return true;
     return (SECRET_EMOTES as readonly string[]).includes(emote) && profile.claimedRewards.includes("all-100");

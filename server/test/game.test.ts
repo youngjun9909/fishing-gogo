@@ -238,12 +238,12 @@ describe("경제와 도감", () => {
 
   it("돈이 부족하면 못 사고, 사면 입을 수 있다", async () => {
     const p0 = await h.service.ensureProfile("a");
-    await expect(h.service.buy("a", "hat-straw")).rejects.toThrow("돈이 부족");
+    await expect(h.service.buy("a", "top-hoodie")).rejects.toThrow("돈이 부족");
     await h.store.saveProfile({ ...p0, coins: 1000 });
-    const p = await h.service.buy("a", "hat-straw");
+    const p = await h.service.buy("a", "top-hoodie");
     expect(p.coins).toBe(800);
-    await expect(h.service.equip("a", "outfit", "hat-straw")).rejects.toThrow("입을 수 없");
-    expect((await h.service.equip("a", "hat", "hat-straw")).equipped.hat).toBe("hat-straw");
+    await expect(h.service.equip("a", "pants", "top-hoodie")).rejects.toThrow("입을 수 없");
+    expect((await h.service.equip("a", "top", "top-hoodie")).equipped.top).toBe("top-hoodie");
   });
 
   it("상의·하의·신발을 따로 사고 각자 칸에만 입을 수 있다", async () => {
