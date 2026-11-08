@@ -2,7 +2,7 @@ import { Client, Room, matchMaker } from "@colyseus/core";
 import { MapSchema, Schema, type } from "@colyseus/schema";
 import {
   BASE_MAPS, BITE_WINDOW_MS, MAX_PLAYERS, MINIGAME_TIMEOUT_MS, RECONNECT_SECONDS, WAIT_MAX_MS,
-  WAIT_MIN_MS, castDistance, rodEffects, rodLevelOf, cursorAt, cursorSpeed, isBaseMap, isRareOrBetter, judge, pickSpecies,
+  WAIT_MIN_MS, baitById, baitEffects, castDistance, rodEffects, rodLevelOf, cursorAt, cursorSpeed, isBaseMap, isRareOrBetter, judge, pickSpecies,
   reachOf, rollSize, sellPrice, speciesById, timeOfDay,
 } from "@fishing/shared";
 import type { FishSpecies, MapDef, MapId } from "@fishing/shared";
@@ -66,6 +66,8 @@ interface Fishing {
   speed?: number;
   /** 던질 때 정해진 낚싯대 효과 */
   eff: ReturnType<typeof rodEffects>;
+  /** 던질 때 쓴 미끼 효과(없으면 모두 1) */
+  bait: ReturnType<typeof baitEffects>;
   /** 이번 입질의 타이밍 칸 폭(낚싯대 효과 반영) */
   zone?: number;
 }
@@ -91,6 +93,7 @@ export function createFishingRoom(deps: RoomDeps) {
     private scores = new Map<string, Score>();
     private names = new Map<string, string>();
     private rods = new Map<string, number>(); // 접속한 사람의 낚싯대 단계
+    private baitPick = new Map<string, string | null>(); // 낚시할 때 쓰기로 고른 미끼(없으면 안 씀)
 
     async onCreate(options: { map?: string; ownerId?: string }) {
       const mapId = options.map ?? "lake";
@@ -111,7 +114,8 @@ export function createFishingRoom(deps: RoomDeps) {
       this.onMessage("move", (c, m) => this.handleMove(c, m));
       this.onMessage("emote", (c, m) => this.handleEmote(c, m));
       this.onMessage("chat", (c, m) => this.handleChat(c, m));
-      this.onMessage("cast", (c, m) => this.handleCast(c, m));
+      this.onMessage("cast", (c, m) => void this.handleCast(c, m));
+      this.onMessage("bait", (c, m) => void this.handleBait(c, m));
       this.onMessage("hook", (c) => this.handleHook(c));
       this.onMessage("reel", (c) => this.handleReel(c));
       this.onMessage("kick", (c, m) => this.handleKick(c, m));
@@ -212,7 +216,7 @@ export function createFishingRoom(deps: RoomDeps) {
     }
 
     // 낚시: 던지기 → 기다림 → 입질 → 타이밍 바 → 결과. 결정은 모두 서버가 한다
-    private handleCast(client: Client, m: { power: number; yaw: number }) {
+    private async handleCast(client: Client, m: { power: number; yaw: number }) {
       const p = this.player(client);
       const f = this.fishing.get(client.sessionId);
       if (!p || (f && f.phase !== "idle")) return;
@@ -230,9 +234,41 @@ export function createFishingRoom(deps: RoomDeps) {
       p.bobX = bx;
       p.bobZ = bz;
       p.fishing = "waiting";
-      const state: Fishing = { phase: "waiting", reach: reachOf(power, eff.farPower), eff };
+      const state: Fishing = { phase: "waiting", reach: reachOf(power, eff.farPower), eff, bait: baitEffects(null) };
       this.fishing.set(client.sessionId, state);
-      state.timer = this.clock.setTimeout(() => this.bite(client.sessionId), deps.waitMs() * eff.waitMul);
+      // 고른 미끼는 던지는 순간 1개 쓴다. 그 사이에 거두거나 나갔으면 타이머를 걸지 않는다
+      const pick = this.baitPick.get(client.sessionId) ?? null;
+      const none = { id: null as string | null, left: 0 };
+      const used = pick ? await deps.service.consumeBait(p.playerId, pick).catch(() => none) : none;
+      if (this.fishing.get(client.sessionId) !== state) return;
+      if (used.id) {
+        state.bait = baitEffects(used.id);
+        client.send("baitLeft", used);
+      } else if (pick) {
+        this.baitPick.set(client.sessionId, null); // 다 썼다
+        client.send("baitLeft", { ...none, out: pick });
+      }
+      state.timer = this.clock.setTimeout(() => this.bite(client.sessionId), deps.waitMs() * eff.waitMul * state.bait.waitMul);
+    }
+
+    /** 낚시할 때 쓸 미끼를 고른다(id가 없으면 안 쓴다). 가진 개수가 없으면 거절한다 */
+    private async handleBait(client: Client, m: { id?: string | null }) {
+      const p = this.player(client);
+      if (!p) return;
+      const id = m?.id ?? null;
+      if (id === null) {
+        this.baitPick.set(client.sessionId, null);
+        client.send("baitLeft", { id: null, left: 0 });
+        return;
+      }
+      const left = (await deps.service.profile(p.playerId))?.baits?.[id] ?? 0;
+      if (!baitById(id) || left <= 0) {
+        this.baitPick.set(client.sessionId, null);
+        client.send("baitLeft", { id: null, left: 0, out: id });
+        return;
+      }
+      this.baitPick.set(client.sessionId, id);
+      client.send("baitLeft", { id, left });
     }
 
     /** 기다리는 중이거나 입질 중일 때 낚싯줄을 거둔다 */
@@ -245,7 +281,7 @@ export function createFishingRoom(deps: RoomDeps) {
       const f = this.fishing.get(sessionId);
       const p = this.state.players.get(sessionId);
       if (!f || !p || f.phase !== "waiting") return;
-      const species = pickSpecies(deps.rng, this.state.mapId as MapId, timeOfDay(deps.now()), f.reach);
+      const species = pickSpecies(deps.rng, this.state.mapId as MapId, timeOfDay(deps.now()), f.reach, f.bait.bias);
       if (!species) return this.cancelFishing(sessionId);
       f.species = species;
       f.phase = "bite";
@@ -264,7 +300,7 @@ export function createFishingRoom(deps: RoomDeps) {
       f.startedAt = deps.now();
       f.target = 0.15 + deps.rng() * 0.7;
       f.speed = cursorSpeed(f.species);
-      f.zone = Math.min(0.9, f.species.zoneWidth * f.eff.zoneMul);
+      f.zone = Math.min(0.9, f.species.zoneWidth * f.eff.zoneMul * f.bait.zoneMul);
       client.send("minigame", {
         target: f.target,
         zoneWidth: f.zone,

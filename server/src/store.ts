@@ -34,6 +34,7 @@ export function newProfile(id: string, nickname: string, appearance = DEFAULT_AP
     equipped: {},
     titles: [],
     claimedRewards: [],
+    baits: {},
   };
 }
 

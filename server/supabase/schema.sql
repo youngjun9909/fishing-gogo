@@ -9,8 +9,11 @@ create table if not exists profiles (
   owned_items jsonb not null default '[]',
   equipped jsonb not null default '{}',
   titles jsonb not null default '[]',
-  claimed_rewards jsonb not null default '[]'
+  claimed_rewards jsonb not null default '[]',
+  baits jsonb not null default '{}'
 );
+-- 이미 표를 만들어 둔 프로젝트는 아래 한 줄을 SQL Editor에서 한 번 실행한다(미끼 개수 저장용)
+alter table profiles add column if not exists baits jsonb not null default '{}'::jsonb;
 
 create table if not exists catches (
   id text primary key,

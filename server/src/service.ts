@@ -1,5 +1,5 @@
 import {
-  CODEX_REWARDS, EMOTES, ITEMS, MAX_CUSTOM_MAPS, MAX_ROD, RODS, rodLevelOf, SECRET_EMOTES, codexRatio, itemById, sellPrice,
+  CODEX_REWARDS, EMOTES, ITEMS, MAX_CUSTOM_MAPS, MAX_BAIT, MAX_ROD, RODS, baitById, rodLevelOf, SECRET_EMOTES, codexRatio, itemById, sellPrice,
   speciesById,
 } from "@fishing/shared";
 import type { Appearance, CatchRecord, MapId, PlayerProfile } from "@fishing/shared";
@@ -112,6 +112,31 @@ export class GameService {
     p.equipped.rod = String(next.level);
     await this.store.saveProfile(p);
     return p;
+  }
+
+  /** 미끼 한 묶음을 산다. 처음 사면 그 미끼를 바로 쓰도록 골라 둔다 */
+  async buyBait(playerId: string, baitId: string): Promise<PlayerProfile> {
+    const b = baitById(baitId);
+    if (!b) throw new Error("없는 미끼예요");
+    const p = await this.mustProfile(playerId);
+    p.baits ??= {};
+    const have = p.baits[b.id] ?? 0;
+    if (have + b.pack > MAX_BAIT) throw new Error(`미끼는 ${MAX_BAIT}개까지 가질 수 있어요`);
+    if (p.coins < b.price) throw new Error("돈이 부족해요");
+    p.coins -= b.price;
+    p.baits[b.id] = have + b.pack;
+    await this.store.saveProfile(p);
+    return p;
+  }
+
+  /** 던질 때 고른 미끼 1개를 쓴다. 가진 게 없으면 id가 null */
+  async consumeBait(playerId: string, baitId: string): Promise<{ id: string | null; left: number }> {
+    const p = await this.store.getProfile(playerId);
+    const have = p?.baits?.[baitId] ?? 0;
+    if (!p || !baitById(baitId) || have <= 0) return { id: null, left: 0 };
+    p.baits = { ...p.baits, [baitId]: have - 1 };
+    await this.store.saveProfile(p);
+    return { id: baitId, left: have - 1 };
   }
 
   async equip(playerId: string, slot: string, itemId: string | null): Promise<PlayerProfile> {

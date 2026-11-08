@@ -124,6 +124,12 @@ button { cursor: pointer; }
 .cell.unknown .nm { color: #a9a2b3; }
 .badge { display: inline-block; font-size: 12px; color: #fff; border-radius: 999px; padding: 2px 9px; }
 
+/* 방 안: 미끼(종류와 개수가 늘 보이고, 누르면 쓴다) */
+.bait-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.bait-chip { border: 3px solid transparent; cursor: pointer; font-family: inherit; }
+.bait-chip.on { border-color: var(--pink-deep); background: #fff0f4; }
+.bait-chip:disabled { opacity: 0.45; cursor: default; }
+
 /* 상점: 낚싯대 */
 .rodtab { display: grid; grid-template-columns: 240px 1fr; gap: 16px; align-items: start; }
 .rod-view { display: flex; flex-direction: column; align-items: center; gap: 6px; background: linear-gradient(#e8f6ff, #fff4dd); border-radius: 18px; padding: 10px 10px 14px; }

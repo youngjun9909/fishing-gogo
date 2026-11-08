@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { Room } from "colyseus.js";
-import { BASE_MAPS, CODEX_REWARDS, CYCLE_MS, DAY_MS, EMOTES, MAX_PLAYERS, RECONNECT_SECONDS, cursorAt, speciesById } from "@fishing/shared";
+import { BAITS, BASE_MAPS, CODEX_REWARDS, CYCLE_MS, DAY_MS, EMOTES, MAX_PLAYERS, RECONNECT_SECONDS, cursorAt, speciesById } from "@fishing/shared";
 import type { MapId, PlayerProfile, Rarity } from "@fishing/shared";
 import type { Joined } from "../App";
 import { sfx, startBgm, stopBgm } from "../audio";
 import { colyseus, inviteLink } from "../net";
 import { GameScene } from "../three/GameScene";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
+
+const BAIT_EMOJI: Record<string, string> = { "bait-worm": "🪱", "bait-glitter": "✨", "bait-gold": "👑" };
 
 const EMOTE_UI: Array<[string, string, string]> = [
   ["wave", "👋", "손 흔들기"], ["angry", "💢", "화내기"], ["aegyo", "💕", "애교"], ["dance", "🎵", "춤추기"], ["cry", "😢", "울기"],
@@ -68,6 +70,10 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
   const [players, setPlayers] = useState(1);
   const [clock, setClock] = useState({ night: false, left: 0 });
   const [lost, setLost] = useState(false);
+  // 미끼: 낚시할 때 쓸지, 어떤 미끼를 쓸지 여기서 고른다(처음엔 안 씀)
+  const [baitPick, setBaitPick] = useState<string | null>(null);
+  const [baitCounts, setBaitCounts] = useState<Record<string, number>>(() => ({ ...(profile.baits ?? {}) }));
+  const baitPickRef = useRef<string | null>(null);
   const chatId = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const meRef = useRef(room.sessionId);
@@ -79,6 +85,12 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
     const on = (t: string, f: (d: any) => void) => off.push(scene.bus.on(t, f));
     on("chat", (m) => setChat((c) => [...c.slice(-7), { id: ++chatId.current, name: m.name, text: m.text }]));
     on("ranking", setRank);
+    on("baitLeft", (m: { id: string | null; left: number; out?: string }) => {
+      if (m.out && baitPickRef.current === m.out) { setToast("미끼를 다 썼어요"); setTimeout(() => setToast(""), 2200); }
+      baitPickRef.current = m.id;
+      setBaitPick(m.id);
+      setBaitCounts((c) => (m.id ? { ...c, [m.id]: m.left } : m.out ? { ...c, [m.out]: 0 } : c));
+    });
     on("toast", (t) => { setToast(t); setTimeout(() => setToast(""), 2200); sfx.fail(); });
     on("announce", (m) => {
       setAnnounce({ text: `${m.name}님이 ${RARITY_LABEL[m.rarity as Rarity]} ${m.speciesName}을(를) 낚았어요! (${m.size}cm)`, rarity: m.rarity });
@@ -193,6 +205,26 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
             <span className="panel chip">{clock.night ? "🌙 밤" : "☀️ 낮"} · {Math.ceil(clock.left / 60000)}분</span>
             <button className="btn small ghost" onClick={leave}>나가기</button>
           </div>
+          {/* 미끼: 종류와 남은 개수가 늘 보이고, 누르면 그 미끼를 쓴다(다시 누르면 안 쓴다) */}
+          {(baitPick || Object.values(baitCounts).some((n) => n > 0)) && (
+            <div className="bait-row">
+              {BAITS.map((b) => {
+                const n = baitCounts[b.id] ?? 0;
+                const on = baitPick === b.id;
+                return (
+                  <button
+                    key={b.id}
+                    className={`panel chip bait-chip ${on ? "on" : ""}`}
+                    disabled={n <= 0}
+                    title={b.desc}
+                    onClick={() => { sfx.click(); room.send("bait", { id: on ? null : b.id }); }}
+                  >
+                    {BAIT_EMOJI[b.id]} {b.name.replace(" 미끼", "")} ×{n}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="hud-tr">

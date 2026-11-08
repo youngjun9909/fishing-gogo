@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { BASE_MAPS, CODEX_REWARDS, ITEMS, MAX_ROD, RODS, SPECIES, codexSpeciesFor, itemById, rodEffects, rodLevelOf, sellPrice, speciesById } from "@fishing/shared";
+import { BAITS, BASE_MAPS, CODEX_REWARDS, ITEMS, MAX_ROD, RODS, SPECIES, codexSpeciesFor, itemById, rodEffects, rodLevelOf, sellPrice, speciesById } from "@fishing/shared";
 import type { Appearance, CatchRecord, CodexEntry, MapId, PlayerProfile, ShopItem } from "@fishing/shared";
 import { getAudio, setMuted, setVolume, sfx } from "../audio";
 import { api, auth } from "../net";
 import { CharacterRig, EYE, HAIR } from "../three/character";
 import type { Look } from "../three/character";
 import { LobbyScene } from "../three/LobbyScene";
+import { buildBait } from "../three/baits";
 import { buildRod } from "../three/rods";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
 
@@ -267,18 +268,18 @@ const SLOT_NAME = { top: "상의", pants: "하의", shoes: "신발", aura: "오�
 const SLOT_EMOJI = { top: "👕", pants: "👖", shoes: "👟", aura: "✨" } as const;
 
 function Shop({ onClose, profile, reload }: { onClose: () => void; profile: PlayerProfile; reload: () => Promise<void> }) {
-  const [slot, setSlot] = useState<ShopItem["slot"] | "rod">("rod");
+  const [slot, setSlot] = useState<ShopItem["slot"] | "rod" | "bait">("rod");
   const [pick, setPick] = useState<string | null>(null); // 미리 입어 볼 상품(null이면 지금 입은 그대로)
-  const changeSlot = (s: ShopItem["slot"] | "rod") => {
+  const changeSlot = (s: ShopItem["slot"] | "rod" | "bait") => {
     setSlot(s);
     setPick(null);
   };
   const [msg, setMsg] = useState("");
-  const items = slot === "rod" ? [] : ITEMS.filter((i) => i.slot === slot && (i.purchasable || profile.ownedItems.includes(i.id)));
+  const items = slot === "rod" || slot === "bait" ? [] : ITEMS.filter((i) => i.slot === slot && (i.purchasable || profile.ownedItems.includes(i.id)));
 
   const previewLook: Look = useMemo(() => {
     const equipped = { ...profile.equipped };
-    if (slot !== "rod" && pick) {
+    if (slot !== "rod" && slot !== "bait" && pick) {
       if (pick === "none") delete equipped[slot];
       else equipped[slot] = pick;
     }
@@ -301,13 +302,15 @@ function Shop({ onClose, profile, reload }: { onClose: () => void; profile: Play
     <Modal title={`🛍️ 상점  🪙 ${profile.coins.toLocaleString()}`} onClose={onClose}>
       <div className="tabs">
         <button className={`tab ${slot === "rod" ? "on" : ""}`} onClick={() => changeSlot("rod")}>🎣 낚싯대</button>
+        <button className={`tab ${slot === "bait" ? "on" : ""}`} onClick={() => changeSlot("bait")}>🪱 미끼</button>
         {(["top", "pants", "shoes", "aura"] as const).map((s) => (
           <button key={s} className={`tab ${slot === s ? "on" : ""}`} onClick={() => changeSlot(s)}>{SLOT_EMOJI[s]} {SLOT_NAME[s]}</button>
         ))}
         <span className="hint" style={{ alignSelf: "center" }}>{msg}</span>
       </div>
       {slot === "rod" && <RodTab profile={profile} act={act} />}
-      {slot !== "rod" && <div className="shop-split">
+      {slot === "bait" && <BaitTab profile={profile} act={act} />}
+      {slot !== "rod" && slot !== "bait" && <div className="shop-split">
         <div className="rod-view">
           <CharacterPreview look={previewLook} slot={slot} />
           <div className="nm" style={{ fontSize: 18 }}>{pick === "none" ? "기본 옷" : pick ? itemById(pick)?.name : profile.equipped[slot] ? itemById(profile.equipped[slot])?.name : "기본 옷"}</div>
@@ -354,8 +357,8 @@ function rodEffectLines(level: number): string[] {
   ];
 }
 
-/** 낚싯대 모델을 빙글빙글 돌려 보여 주는 작은 3D 화면 */
-function RodPreview({ level }: { level: number }) {
+/** 모델(낚싯대·미끼)을 빙글빙글 돌려 보여 주는 작은 3D 화면 */
+function ModelPreview({ k, make, camZ, rotZ = 0 }: { k: string; make: () => { group: THREE.Group; update: (t: number, reeling: boolean) => void }; camZ: number; rotZ?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current!;
@@ -366,14 +369,14 @@ function RodPreview({ level }: { level: number }) {
     el.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     const cam = new THREE.PerspectiveCamera(30, w / h, 0.1, 50);
-    cam.position.set(0, 0.05, 4.1);
+    cam.position.set(0, 0.05, camZ);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa7bb, 1.7));
     const sun = new THREE.DirectionalLight(0xffffff, 1.4);
     sun.position.set(2, 3, 4);
     scene.add(sun);
-    const fx = buildRod(level);
+    const fx = make();
     const spin = new THREE.Group();
-    fx.group.rotation.z = 0.5;
+    fx.group.rotation.z = rotZ;
     spin.add(fx.group);
     scene.add(spin);
     let raf = 0;
@@ -398,9 +401,13 @@ function RodPreview({ level }: { level: number }) {
       renderer.forceContextLoss();
       renderer.domElement.remove();
     };
-  }, [level]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [k]);
   return <div className="rod-preview" ref={ref} />;
 }
+
+const RodPreview = ({ level }: { level: number }) => <ModelPreview k={`rod${level}`} make={() => buildRod(level)} camZ={4.1} rotZ={0.5} />;
+const BaitPreview = ({ id }: { id: string }) => <ModelPreview k={id} make={() => { const f = buildBait(id); return { group: f.group, update: (t) => f.update(t) }; }} camZ={3.6} />;
 
 /** 칸마다 잘 보이는 높이와 거리(캐릭터 키 약 2.6) */
 const PREVIEW_FOCUS: Record<string, { y: number; d: number }> = {
@@ -488,6 +495,39 @@ function RodTab({ profile, act }: { profile: PlayerProfile; act: (fn: () => Prom
           );
         })}
         <p className="hint">강화하면 줄을 던질 때 더 멀리 나가고, 입질이 빨리 오고, 타이밍 맞추기가 조금 쉬워져요. 효과는 모두에게 공정하도록 5단계에서도 약 30%예요.</p>
+      </div>
+    </div>
+  );
+}
+
+function BaitTab({ profile, act }: { profile: PlayerProfile; act: (fn: () => Promise<unknown>, ok: string) => Promise<void> }) {
+  const [view, setView] = useState(BAITS[0].id);
+  const bait = BAITS.find((b) => b.id === view) ?? BAITS[0];
+  return (
+    <div className="rodtab">
+      <div className="rod-view">
+        <BaitPreview id={bait.id} />
+        <div className="nm" style={{ fontSize: 20 }}>{bait.name}</div>
+        <ul className="rod-fx"><li>{bait.desc}</li><li>고르면 던질 때마다 1개 써요</li></ul>
+      </div>
+      <div className="rod-list">
+        {BAITS.map((b) => {
+          const have = profile.baits?.[b.id] ?? 0;
+          return (
+            <div key={b.id} className={`rod-row ${view === b.id ? "sel" : ""}`} onClick={() => setView(b.id)}>
+              <div>
+                <div className="nm">{b.name}</div>
+                <div className="sub">가진 개수 {have}개</div>
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <button className="btn small sun" disabled={profile.coins < b.price} onClick={(e) => { e.stopPropagation(); void act(() => api("/api/bait/buy", { baitId: b.id }), `${b.name} ${b.pack}개를 샀어요!`); }}>
+                  🪙 {b.price.toLocaleString()} · {b.pack}개
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        <p className="hint">미끼는 낚시할 때 방 화면 위쪽의 "🪱 미끼" 버튼에서 쓸지 말지, 어떤 미끼를 쓸지 고를 수 있어요. 던지는 순간 하나씩 줄고, 최대 99개까지 가질 수 있어요.</p>
       </div>
     </div>
   );

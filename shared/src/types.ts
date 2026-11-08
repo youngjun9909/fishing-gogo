@@ -47,6 +47,8 @@ export interface PlayerProfile {
   equipped: Record<string, string>;
   titles: string[];
   claimedRewards: string[];
+  /** 가진 미끼 개수(미끼 id → 개수). 쓸지는 방 안에서 낚시할 때 고른다 */
+  baits: Record<string, number>;
 }
 
 export interface CatchRecord {

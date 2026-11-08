@@ -18,6 +18,7 @@ export function createApi(
     "POST /api/sell": (id, b) => service.sell(id, Array.isArray(b.ids) ? b.ids : []),
     "POST /api/buy": (id, b) => service.buy(id, b.itemId),
     "POST /api/rod/upgrade": (id) => service.upgradeRod(id),
+    "POST /api/bait/buy": (id, b) => service.buyBait(id, String(b.baitId)),
     "POST /api/equip": (id, b) => service.equip(id, b.slot, b.itemId ?? null),
     // 개발용 로그인 계정만: 돈을 받아 상점에서 직접 사 보게 한다(배포에서는 개발용 로그인이 꺼져 있다)
     "POST /api/dev/grant": async (id) => {

@@ -28,7 +28,7 @@ export class SupabaseStore implements PlayerStore {
   private fromRow(r: any): PlayerProfile {
     return {
       id: r.id, nickname: r.nickname, appearance: r.appearance, coins: r.coins,
-      ownedItems: r.owned_items, equipped: r.equipped, titles: r.titles, claimedRewards: r.claimed_rewards,
+      ownedItems: r.owned_items, equipped: r.equipped, titles: r.titles, claimedRewards: r.claimed_rewards, baits: r.baits ?? {},
     };
   }
 
@@ -43,7 +43,7 @@ export class SupabaseStore implements PlayerStore {
       prefer: "resolution=merge-duplicates",
       body: JSON.stringify({
         id: p.id, nickname: p.nickname, appearance: p.appearance, coins: p.coins,
-        owned_items: p.ownedItems, equipped: p.equipped, titles: p.titles, claimed_rewards: p.claimedRewards,
+        owned_items: p.ownedItems, equipped: p.equipped, titles: p.titles, claimed_rewards: p.claimedRewards, baits: p.baits ?? {},
       }),
     });
   }

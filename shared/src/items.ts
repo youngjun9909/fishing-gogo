@@ -64,6 +64,42 @@ export function rodEffects(level: number) {
   };
 }
 
+// ---- 미끼: 던질 때마다 1개씩 쓰는 소모품. 사서 하나를 골라 쓴다 ----
+export interface Bait {
+  id: string;
+  name: string;
+  /** 한 묶음 값 */
+  price: number;
+  /** 한 묶음에 들어 있는 개수 */
+  pack: number;
+  desc: string;
+}
+export const BAITS: Bait[] = [
+  { id: "bait-worm", name: "지렁이 미끼", price: 50, pack: 10, desc: "입질이 빨리 와요 (기다리는 시간 -30%)" },
+  { id: "bait-glitter", name: "반짝이 미끼", price: 120, pack: 5, desc: "희귀 이상 물고기가 약 1.7배 잘 물려요" },
+  { id: "bait-gold", name: "황금 미끼", price: 600, pack: 3, desc: "일반은 안 나와요! 희귀 이상만, 밤에 멀리 던지면 매우 희귀 약 24%·전설 약 9%, 타이밍 칸 +15%" },
+]
+export const MAX_BAIT = 99;
+
+export function baitById(id: string | null | undefined): Bait | undefined {
+  return BAITS.find((b) => b.id === id);
+}
+
+/** 미끼 효과. 미끼가 없으면 모두 1(배율 없음) */
+export function baitEffects(id: string | null | undefined) {
+  return {
+    waitMul: id === "bait-worm" ? 0.7 : 1,
+    /** 등급별 가중치 배율: 반짝이는 희귀 이상 2배, 황금은 일반을 막고 매우 희귀 2배, 전설 3배 */
+    bias:
+      id === "bait-glitter"
+        ? { common: 1, rare: 2, veryRare: 2, legendary: 2 }
+        : id === "bait-gold"
+          ? { common: 0, rare: 1, veryRare: 2, legendary: 3 }
+          : { common: 1, rare: 1, veryRare: 1, legendary: 1 },
+    zoneMul: id === "bait-gold" ? 1.15 : 1,
+  };
+}
+
 export function itemById(id: string): ShopItem | undefined {
   return ITEMS.find((i) => i.id === id);
 }

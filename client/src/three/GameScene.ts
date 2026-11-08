@@ -271,6 +271,7 @@ export class GameScene {
     r.onMessage("ranking", (m: any) => this.bus.emit("ranking", m));
     r.onMessage("announce", (m: any) => this.bus.emit("announce", m));
     r.onMessage("chatBlocked", (m: any) => this.bus.emit("toast", m.reason));
+    r.onMessage("baitLeft", (m: any) => this.bus.emit("baitLeft", m));
     r.onMessage("castFailed", (m: any) => this.bus.emit("toast", m.reason));
     r.onMessage("bite", (m: any) => {
       this.bus.emit("bite", m);

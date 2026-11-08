@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { CYCLE_MS, DAY_MS, MAX_ROD, RODS, SPECIES, candidatesFor, castDistance, rodEffects, rodLevelOf } from "@fishing/shared";
+import { CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, SPECIES, baitEffects, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf } from "@fishing/shared";
 import { startHarness, until, waitMessage } from "./harness";
 import type { Harness } from "./harness";
 
@@ -294,6 +294,83 @@ describe("경제와 도감", () => {
   it("낚싯대 칸은 입기·벗기로 바꿀 수 없다(단계가 사라지지 않게)", async () => {
     await h.service.ensureProfile("a");
     await expect(h.service.equip("a", "rod", null)).rejects.toThrow("강화로만");
+  });
+
+  it("미끼를 사면 묶음 개수만큼 늘고, 처음 산 미끼는 바로 골라진다. 돈이 모자라거나 너무 많으면 거절한다", async () => {
+    const p0 = await h.service.ensureProfile("a");
+    await expect(h.service.buyBait("a", "bait-gold")).rejects.toThrow("돈이 부족");
+    await h.store.saveProfile({ ...p0, coins: 100000 });
+    const worm = BAITS.find((b) => b.id === "bait-worm")!;
+    const p1 = await h.service.buyBait("a", "bait-worm");
+    expect(p1.baits["bait-worm"]).toBe(worm.pack);
+    expect(p1.equipped.bait).toBeUndefined(); // 쓸지는 낚시할 때 고른다
+    expect(p1.coins).toBe(100000 - worm.price);
+    await expect(h.service.buyBait("a", "없는미끼")).rejects.toThrow("없는 미끼");
+    for (let i = 0; i < 20; i++) await h.service.buyBait("a", "bait-worm").catch(() => undefined);
+    await expect(h.service.buyBait("a", "bait-worm")).rejects.toThrow("99개");
+  });
+
+  it("던질 때 고른 미끼를 하나 쓰고, 다 쓰거나 없는 미끼면 효과가 없다", async () => {
+    const p0 = await h.service.ensureProfile("a");
+    await h.store.saveProfile({ ...p0, baits: { "bait-gold": 1 } });
+    expect(await h.service.consumeBait("a", "bait-gold")).toEqual({ id: "bait-gold", left: 0 });
+    expect(await h.service.consumeBait("a", "bait-gold")).toEqual({ id: null, left: 0 });
+    expect(await h.service.consumeBait("a", "bait-worm")).toEqual({ id: null, left: 0 });
+  });
+
+  it("반짝이는 희귀 이상을 더 잘 뽑고, 황금은 일반을 막고 매우 희귀·전설을 크게 늘린다", () => {
+    const share = (id: string | null) => {
+      const bias = baitEffects(id).bias;
+      let rare = 0, vr = 0, leg = 0, common = 0;
+      for (let i = 0; i < 4000; i++) {
+        const sp = pickSpecies(() => (i + 0.5) / 4000, "lake", "night", "far", bias)!;
+        if (sp.rarity === "common") common++;
+        else if (sp.rarity === "rare") rare++;
+        else if (sp.rarity === "veryRare") vr++;
+        else leg++;
+      }
+      return { common: common / 4000, rare: rare / 4000, vr: vr / 4000, leg: leg / 4000 };
+    };
+    const none = share(null), glitter = share("bait-glitter"), gold = share("bait-gold");
+    expect(glitter.common).toBeLessThan(none.common);
+    expect(glitter.leg).toBeGreaterThan(none.leg * 1.5);
+    expect(gold.common).toBe(0); // 황금은 일반이 절대 안 나온다
+    expect(gold.leg).toBeGreaterThan(none.leg * 8); // 밤에 멀리 던지면 전설이 8배 넘게 나온다
+    expect(gold.vr).toBeGreaterThan(gold.leg);
+    // 일반만 사는 곳이라도 후보가 없어 멈추지 않는다(배율 없이 뽑는다)
+    expect(pickSpecies(() => 0.5, "lake", "day", "near", baitEffects("bait-gold").bias)).not.toBeNull();
+  });
+
+  it("방 안에서 고른 미끼만 던질 때 쓰고, 안 고르면 안 쓴다. 없는 미끼는 고를 수 없다", async () => {
+    await h.service.ensureProfile("plain");
+    const gold = await h.service.ensureProfile("gold");
+    await h.store.saveProfile({ ...gold, baits: { "bait-gold": 2 } });
+    const { clients } = await h.open(["plain", "gold"]);
+    // 없는 미끼는 거절된다
+    const refused = waitMessage(clients[0], "baitLeft");
+    clients[0].send("bait", { id: "bait-gold" });
+    expect(await refused).toMatchObject({ id: null, out: "bait-gold" });
+    // 가진 미끼를 고르면 개수를 알려 준다
+    const chosen = waitMessage(clients[1], "baitLeft");
+    clients[1].send("bait", { id: "bait-gold" });
+    expect(await chosen).toEqual({ id: "bait-gold", left: 2 });
+    // 던질 때 하나 쓴다
+    const used = waitMessage(clients[1], "baitLeft");
+    const bites = clients.map((c) => waitMessage(c, "bite"));
+    for (const c of clients) c.send("cast", { power: 0.3, yaw: Math.PI });
+    expect(await used).toEqual({ id: "bait-gold", left: 1 });
+    await Promise.all(bites);
+    const zones: number[] = [];
+    for (const c of clients) {
+      c.send("hook");
+      zones.push((await waitMessage(c, "minigame")).zoneWidth);
+    }
+    // 황금은 일반을 막으니 다른 물고기가 걸린다. 그 물고기 칸 폭의 +15%가 와야 한다
+    const sp = pickSpecies(() => 0, "lake", "day", "near", baitEffects("bait-gold").bias)!;
+    expect(sp.rarity).not.toBe("common");
+    expect(zones[1]).toBeCloseTo(sp.zoneWidth * 1.15, 5);
+    expect((await h.service.profile("gold"))!.baits["bait-gold"]).toBe(1);
+    expect((await h.service.profile("plain"))!.baits["bait-gold"]).toBeUndefined();
   });
 
   it("낚싯대 단계가 높을수록 멀리 던지고 기다림이 짧고 타이밍 칸이 넓다", () => {
