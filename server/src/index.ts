@@ -47,4 +47,9 @@ if (process.argv[1]?.endsWith("index.ts")) {
   const server = createGameServer(defaultDeps({ service, authenticate }));
   const port = Number(env.PORT ?? 2567);
   server.listen(port).then(() => console.log(`game server on ${port}`));
+  // Render 무료 서버는 바깥에서 15분간 요청이 없으면 잠든다. 서버가 자기 공개 주소로 10분마다 요청해 깨어 있게 한다(Render가 RENDER_EXTERNAL_URL을 넣어 준다)
+  // shortcut: 서버가 이미 죽었거나 잠들었다면 이 타이머도 멈춘다. 그때는 외부 핑 서비스가 필요하다.
+  if (env.RENDER_EXTERNAL_URL) {
+    setInterval(() => void fetch(`${env.RENDER_EXTERNAL_URL}/health`).catch(() => {}), 10 * 60 * 1000);
+  }
 }
