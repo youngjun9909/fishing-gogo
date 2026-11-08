@@ -43,3 +43,9 @@ alter table profiles enable row level security;
 alter table catches enable row level security;
 alter table codex enable row level security;
 alter table custom_maps enable row level security;
+
+-- 프로젝트를 만들 때 "Automatically expose new tables"를 끄면 서버용 키(service_role)에도 표 권한이 자동으로 안 붙는다.
+-- 서버만 쓰도록 service_role에게만 권한을 주고, 브라우저용(anon, authenticated)에게는 주지 않는다.
+grant usage on schema public to service_role;
+grant all on all tables in schema public to service_role;
+alter default privileges in schema public grant all on tables to service_role;

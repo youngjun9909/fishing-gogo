@@ -123,18 +123,23 @@ function Login({ onDone, invite, error }: { onDone: () => Promise<void>; invite:
           >
             카카오로 시작하기
           </button>
-          <div className="hint">개발용 로그인 (카카오 연결 전 임시)</div>
-          <input
-            className="field"
-            placeholder="아이디를 입력해요"
-            value={name}
-            maxLength={20}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && name.trim() && go()}
-          />
-          <button className="btn mint" disabled={!name.trim()} onClick={go}>
-            들어가기
-          </button>
+          {/* 개발용 로그인: 카카오가 연결된 배포 화면에서는 숨긴다(내 컴퓨터에서 개발할 때와 카카오 키가 없을 때만 보인다) */}
+          {(import.meta.env.DEV || !kakaoConfigured) && (
+            <>
+            <div className="hint">개발용 로그인 (카카오 연결 전 임시)</div>
+            <input
+              className="field"
+              placeholder="아이디를 입력해요"
+              value={name}
+              maxLength={20}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && name.trim() && go()}
+            />
+            <button className="btn mint" disabled={!name.trim()} onClick={go}>
+              들어가기
+            </button>
+            </>
+          )}
           <div className="err">{msg}</div>
         </div>
       </div>
