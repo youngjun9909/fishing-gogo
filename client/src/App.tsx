@@ -44,7 +44,7 @@ export default function App() {
     setError("");
     try {
       const room = await make();
-      setJoined({ room, mapId });
+      setJoined({ room, mapId: mapId || (room.state as any)?.mapId || "lake" });
       setPendingRoom(null);
       history.replaceState(null, "", location.pathname);
     } catch (e) {
@@ -58,6 +58,8 @@ export default function App() {
   const joinRoom = (code: string) =>
     enter(async () => {
       const room = await colyseus.joinById(code.trim().toUpperCase(), { token: auth.token });
+      // 들어온 방의 맵은 방 상태에 들어 있다(첫 상태가 오기 전이면 기다린다). 비워 두면 호수 맵으로 그려져 버린다
+      if (!(room.state as any)?.mapId) await new Promise<void>((ok) => room.onStateChange.once(() => ok()));
       return room;
     }, "");
 
