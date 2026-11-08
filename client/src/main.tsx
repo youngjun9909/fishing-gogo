@@ -21,7 +21,7 @@ function Boot() {
   return (
     <div className="login">
       <div className="card panel">
-        <h1 className="logo">낚시 고고</h1>
+        <h1 className="logo">퐁당</h1>
         {state === "loading" ? (
           <p className="hint">캐릭터를 불러오는 중이에요...<br />처음 한 번은 조금 걸려요. 잠시만 기다려 주세요!</p>
         ) : (

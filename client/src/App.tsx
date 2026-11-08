@@ -67,7 +67,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, pendingRoom]);
 
-  if (busy) return <div className="login"><div className="logo">낚시 고고</div></div>;
+  if (busy) return <div className="login"><div className="logo">퐁당</div></div>;
 
   if (!profile) return <Login onDone={loadProfile} invite={pendingRoom} error={error} />;
 
@@ -108,7 +108,7 @@ function Login({ onDone, invite, error }: { onDone: () => Promise<void>; invite:
     <div className="login">
       <div className="card panel">
         <h1 className="logo">
-          낚시 고고
+          퐁당
           <small>친구들과 함께 떠나는 3D 낚시 여행</small>
         </h1>
         {invite && <p className="hint">초대받았어요! 로그인하면 <b>{invite}</b> 방으로 바로 들어가요.</p>}

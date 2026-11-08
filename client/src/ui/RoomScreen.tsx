@@ -27,7 +27,7 @@ async function shareInvite(code: string, mapName: string): Promise<string> {
     try {
       K.Share.sendDefault({
         objectType: "feed",
-        content: { title: "낚시 고고에 초대할게요! 🎣", description: `${mapName}에서 같이 낚시해요. 초대 코드: ${code}`, imageUrl: `${location.origin}/invite.png`, link: { mobileWebUrl: link, webUrl: link } },
+        content: { title: "퐁당에 초대할게요! 🎣", description: `${mapName}에서 같이 낚시해요. 초대 코드: ${code}`, imageUrl: `${location.origin}/invite.png`, link: { mobileWebUrl: link, webUrl: link } },
         buttons: [{ title: "같이 낚시하러 가기", link: { mobileWebUrl: link, webUrl: link } }],
       });
       return "카카오톡 공유 창을 열었어요";

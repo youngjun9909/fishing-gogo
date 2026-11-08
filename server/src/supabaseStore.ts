@@ -14,7 +14,8 @@ export class SupabaseStore implements PlayerStore {
       ...init,
       headers: {
         apikey: this.serviceKey,
-        Authorization: `Bearer ${this.serviceKey}`,
+        // 옛 형식 키(eyJ…, JWT)만 Authorization에도 싣는다. 새 형식 키(sb_secret_…)는 apikey 헤더만 쓴다
+        ...(this.serviceKey.startsWith("eyJ") ? { Authorization: `Bearer ${this.serviceKey}` } : {}),
         "Content-Type": "application/json",
         ...(init.prefer ? { Prefer: init.prefer } : {}),
       },
