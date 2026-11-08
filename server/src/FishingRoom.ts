@@ -120,13 +120,20 @@ export function createFishingRoom(deps: RoomDeps) {
       this.onMessage("reel", (c) => this.handleReel(c));
       this.onMessage("kick", (c, m) => this.handleKick(c, m));
       this.onMessage("cancel", (c) => this.handleCancel(c));
+      this.onMessage("refresh", (c) => void this.handleRefresh(c));
     }
 
     async onAuth(_client: Client, options: { token?: string }) {
       const id = options?.token ? await deps.authenticate(options.token) : null;
       if (!id) throw new Error("로그인이 필요해요");
-      for (const p of this.state.players.values()) {
-        if (p.playerId === id) throw new Error("이미 이 방에 들어와 있어요");
+      for (const [sid, p] of [...this.state.players.entries()]) {
+        if (p.playerId !== id) continue;
+        // 나중에 들어온 접속이 이긴다: 끊겨서 남은 자리는 치우고, 아직 붙어 있는 옛 접속(다른 창·멈춘 창)은 내보낸다(4002)
+        this.clients.find((c) => c.sessionId === sid)?.leave(4002);
+        this.cancelFishing(sid);
+        this.state.players.delete(sid);
+        this.limiters.delete(sid);
+        if (this.state.hostId === sid) this.state.hostId = "";
       }
       return { playerId: id };
     }
@@ -174,6 +181,16 @@ export function createFishingRoom(deps: RoomDeps) {
 
     onDispose() {
       for (const id of this.fishing.keys()) this.cancelFishing(id);
+    }
+
+    /** 방 안 상점에서 옷·낚싯대를 바꾼 뒤, 저장된 정보를 다시 읽어 모습과 낚싯대 단계를 새로 맞춘다 */
+    private async handleRefresh(client: Client) {
+      const p = this.player(client);
+      if (!p) return;
+      const profile = await deps.service.profile(p.playerId);
+      if (!profile || !this.state.players.has(client.sessionId)) return;
+      p.look = JSON.stringify({ appearance: profile.appearance, equipped: profile.equipped });
+      if (this.state.players.get(client.sessionId)?.fishing === "idle") this.rods.set(client.sessionId, rodLevelOf(profile.equipped));
     }
 
     private player(client: Client) {

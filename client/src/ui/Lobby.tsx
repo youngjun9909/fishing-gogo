@@ -172,7 +172,7 @@ function useFetch<T>(path: string, deps: unknown[] = []) {
   return [data, () => setTick((t) => t + 1)] as const;
 }
 
-function Inventory({ onClose, reload }: { onClose: () => void; reload: () => Promise<void> }) {
+export function Inventory({ onClose, reload, canSell = true }: { onClose: () => void; reload: () => Promise<void>; canSell?: boolean }) {
   const [list, refetch] = useFetch<CatchRecord[]>("/api/inventory");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState("");
@@ -194,12 +194,16 @@ function Inventory({ onClose, reload }: { onClose: () => void; reload: () => Pro
 
   return (
     <Modal title={`🎒 인벤토리 (${list?.length ?? 0}마리)`} onClose={onClose}>
-      <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <button className="btn small ghost" onClick={() => setSel(new Set(sorted.map((c) => c.id)))}>모두 선택</button>
-        <button className="btn small ghost" onClick={() => setSel(new Set())}>선택 해제</button>
-        <button className="btn small sun" disabled={!sel.size} onClick={sell}>선택한 {sel.size}마리 팔기 (🪙 {total})</button>
-        <span className="hint">{msg}</span>
-      </div>
+      {canSell ? (
+        <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <button className="btn small ghost" onClick={() => setSel(new Set(sorted.map((c) => c.id)))}>모두 선택</button>
+          <button className="btn small ghost" onClick={() => setSel(new Set())}>선택 해제</button>
+          <button className="btn small sun" disabled={!sel.size} onClick={sell}>선택한 {sel.size}마리 팔기 (🪙 {total})</button>
+          <span className="hint">{msg}</span>
+        </div>
+      ) : (
+        <p className="hint" style={{ marginBottom: 12 }}>물고기는 상인 아저씨에게 가서 팔 수 있어요 🧑‍🌾</p>
+      )}
       {list && !list.length && <p className="hint">아직 잡은 물고기가 없어요. 방을 만들어 낚시를 떠나 볼까요?</p>}
       <div className="grid">
         {sorted.map((c) => {
@@ -208,7 +212,7 @@ function Inventory({ onClose, reload }: { onClose: () => void; reload: () => Pro
             <button
               key={c.id}
               className={`cell ${sel.has(c.id) ? "sel" : ""}`}
-              onClick={() => setSel((s) => { const n = new Set(s); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })}
+              onClick={() => canSell && setSel((s) => { const n = new Set(s); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })}
             >
               <FishIcon sp={sp} size={92} />
               <div className="nm">{sp.name}</div>
@@ -267,7 +271,7 @@ function Codex({ onClose, profile }: { onClose: () => void; profile: PlayerProfi
 const SLOT_NAME = { top: "상의", pants: "하의", shoes: "신발", aura: "오라" } as const;
 const SLOT_EMOJI = { top: "👕", pants: "👖", shoes: "👟", aura: "✨" } as const;
 
-function Shop({ onClose, profile, reload }: { onClose: () => void; profile: PlayerProfile; reload: () => Promise<void> }) {
+export function Shop({ onClose, profile, reload }: { onClose: () => void; profile: PlayerProfile; reload: () => Promise<void> }) {
   const [slot, setSlot] = useState<ShopItem["slot"] | "rod" | "bait">("rod");
   const [pick, setPick] = useState<string | null>(null); // 미리 입어 볼 상품(null이면 지금 입은 그대로)
   const changeSlot = (s: ShopItem["slot"] | "rod" | "bait") => {

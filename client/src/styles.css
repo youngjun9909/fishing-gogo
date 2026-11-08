@@ -179,6 +179,7 @@ button { cursor: pointer; }
 .emote small { position: absolute; bottom: -2px; right: 2px; font-size: 11px; color: var(--ink-soft); }
 .emote:disabled { opacity: 0.35; }
 .hint-bar { position: absolute; bottom: 82px; left: 50%; transform: translateX(-50%); font-size: 16px; background: rgba(255,255,255,0.85); padding: 6px 16px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
+.npc-talk { position: absolute; bottom: 130px; left: 50%; transform: translateX(-50%); pointer-events: auto; font-size: 17px; padding: 10px 20px; z-index: 6; }
 
 .charge { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); width: min(320px, 70vw); height: 22px; background: rgba(255,255,255,0.9); border-radius: 999px; padding: 4px; box-shadow: var(--shadow); pointer-events: none; }
 .charge i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--mint), var(--sun), var(--pink-deep)); }

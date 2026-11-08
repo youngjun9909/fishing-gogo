@@ -123,6 +123,7 @@ export class GameScene {
   private disposers: Array<() => void> = [];
   private phase = "idle";
   private myMinigame = false;
+  private npc: { rig: CharacterRig; pos: THREE.Vector3; near: boolean } | null = null;
 
   constructor(
     private container: HTMLElement,
@@ -133,9 +134,41 @@ export class GameScene {
     this.map = BASE_MAPS[mapId as MapId] ?? BASE_MAPS.lake;
     this.engine = createEngine(container, this.scene, this.camera);
     this.world = buildWorld(mapId, this.scene);
+    this.buildNpc();
     this.bindInput();
     this.bindRoom();
     this.loop();
+  }
+
+  /** 상인 NPC: 시작 지점 옆 작은 가판대에 서 있다. 가까이 가면 "npcNear"로 알린다 */
+  private buildNpc() {
+    const sp = this.map.spawn;
+    const pos = new THREE.Vector3(sp.x + 5.5, 0, sp.z - 2);
+    const rig = new CharacterRig({
+      appearance: { eyes: 0, nose: 1, mouth: 0, hair: 1, skinColor: 0, hairColor: 2, eyeColor: 1, body: 1, gender: 1 },
+      equipped: { top: "top-hoodie" },
+    });
+    rig.root.position.copy(pos);
+    this.scene.add(rig.root);
+    const tag = textSprite("상인 아저씨", { bg: "rgba(74,59,82,0.72)", fg: "#ffffff", size: 28, sub: "🛍️ 판매 · 상점", subFg: "#ffd45a", compact: true });
+    tag.position.set(0, 3.0 + tag.scale.y / 2, 0);
+    rig.root.add(tag);
+    // 가판대: 나무 받침 + 붉은 차양
+    const wood = new THREE.MeshToonMaterial({ color: 0xb07a45 });
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.8, 0.7), wood);
+    counter.position.set(pos.x, 0.4, pos.z + 1.2);
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.12, 1.6), new THREE.MeshToonMaterial({ color: 0xe0566a }));
+    awning.position.set(pos.x, 3.5, pos.z + 0.2);
+    awning.rotation.x = 0.18;
+    const poles = [-1.4, 1.4].map((dx) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.5, 8), wood);
+      m.position.set(pos.x + dx, 1.75, pos.z - 0.5);
+      return m;
+    });
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.45, 0.45), new THREE.MeshToonMaterial({ color: 0xf2c94c }));
+    box.position.set(pos.x - 0.7, 1.02, pos.z + 1.2);
+    this.scene.add(counter, awning, box, ...poles);
+    this.npc = { rig, pos, near: false };
   }
 
   setServerNow(serverNow: number) {
@@ -149,7 +182,7 @@ export class GameScene {
   private bindInput() {
     const el = this.engine.renderer.domElement;
     const down = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === "INPUT") return;
+      if ((e.target as HTMLElement)?.tagName === "INPUT" || document.querySelector(".modal-back")) return; // 글 쓰는 중이나 창이 떠 있으면 게임 키는 무시
       const k = e.key.toLowerCase();
       if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) this.keys.add(k);
       if (k === " " && !e.repeat) {
@@ -157,6 +190,7 @@ export class GameScene {
         this.actionDown();
       }
       if (/^[1-5]$/.test(k) && !e.repeat) this.bus.emit("emoteKey", Number(k) - 1);
+      if (k === "e" && !e.repeat && this.npc?.near) this.bus.emit("npcKey", true);
       if (k === "escape" || k === "c") this.cancel();
     };
     const up = (e: KeyboardEvent) => {
@@ -614,6 +648,16 @@ export class GameScene {
     }
   }
 
+  private updateNpc(dt: number) {
+    const n = this.npc;
+    const mine = this.peers.get(this.mySession)?.rig.root.position;
+    if (!n) return;
+    const dx = mine ? mine.x - n.pos.x : 0, dz = mine ? mine.z - n.pos.z : 1;
+    const near = !!mine && Math.hypot(dx, dz) < 4.5;
+    if (near !== n.near) { n.near = near; this.bus.emit("npcNear", near); }
+    n.rig.update(dt, { moving: false, fishing: "idle" }, near ? Math.atan2(dx, dz) : 0);
+  }
+
   private updateCamera(dt: number) {
     const peer = this.peers.get(this.mySession);
     this.camDist += (this.camTargetDist - this.camDist) * Math.min(1, dt * 8);
@@ -646,6 +690,7 @@ export class GameScene {
     this.t += dt;
     this.syncPeers(dt);
     this.moveMe(dt);
+    this.updateNpc(dt);
     this.updateCamera(dt);
     this.world.update(this.t, this.now());
     if (this.charging) this.bus.emit("charge", this.chargePower(performance.now()));
@@ -667,6 +712,7 @@ export class GameScene {
     cancelAnimationFrame(this.raf);
     this.disposers.forEach((d) => d());
     for (const id of [...this.peers.keys()]) this.removePeer(id);
+    this.npc?.rig.dispose();
     this.engine.dispose();
   }
 }

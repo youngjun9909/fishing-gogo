@@ -78,6 +78,7 @@ export default function App() {
       <RoomScreen
         joined={joined}
         profile={profile}
+        reload={loadProfile}
         onLeave={async () => {
           setJoined(null);
           await loadProfile();

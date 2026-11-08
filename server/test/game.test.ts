@@ -34,10 +34,9 @@ describe("방과 초대", () => {
     await expect(h.colyseus.sdk.joinById(code, { token: "p9" })).rejects.toBeTruthy();
   });
 
-  it("로그인 없이 입장하거나 같은 사람이 두 번 들어오면 거절된다", async () => {
+  it("로그인 없이 입장하면 거절된다", async () => {
     const { code } = await h.open(["alice"]);
     await expect(h.colyseus.sdk.joinById(code, {})).rejects.toBeTruthy();
-    await expect(h.colyseus.sdk.joinById(code, { token: "alice" })).rejects.toBeTruthy();
   });
 
   it("없는 방 코드는 거절된다", async () => {
@@ -73,6 +72,21 @@ describe("방과 초대", () => {
     const back = await h.colyseus.sdk.reconnect(token);
     await until(() => (back as any).state?.players?.size === 2);
     expect((back.state.players.get(back.sessionId) as any).x).toBe(5);
+  });
+
+  it("접속 중인 같은 사람이 다시 들어오면 옛 접속이 밀려나고 새 접속이 들어간다", async () => {
+    const { code, clients } = await h.open(["alice", "bob"]);
+    const again = await h.colyseus.sdk.joinById(code, { token: "alice" });
+    await until(() => (again as any).state?.players?.size === 2);
+    await until(() => players(clients[1]).length === 2 && !clients[1].state.players.has(clients[0].sessionId));
+  });
+
+  it("끊긴 자리가 남아 있어도 같은 사람이 새로 들어오면 받아 준다", async () => {
+    const { code, clients } = await h.open(["alice", "bob"]);
+    clients[0].connection.close(4001);
+    await new Promise((r) => setTimeout(r, 100));
+    const again = await h.colyseus.sdk.joinById(code, { token: "alice" });
+    await until(() => (again as any).state?.players?.size === 2);
   });
 });
 

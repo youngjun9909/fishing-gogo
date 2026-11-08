@@ -7,6 +7,7 @@ import { sfx, startBgm, stopBgm } from "../audio";
 import { colyseus, inviteLink } from "../net";
 import { GameScene } from "../three/GameScene";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
+import { Inventory, Modal, Shop } from "./Lobby";
 
 const BAIT_EMOJI: Record<string, string> = { "bait-worm": "🪱", "bait-glitter": "✨", "bait-gold": "👑" };
 
@@ -45,9 +46,10 @@ async function shareInvite(code: string, mapName: string): Promise<string> {
   }
 }
 
-export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
+export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
   joined: Joined;
   profile: PlayerProfile;
+  reload: () => Promise<void>;
   onLeave: () => void;
   onRejoin: (room: Room<any>) => void;
 }) {
@@ -74,6 +76,11 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
   const [baitPick, setBaitPick] = useState<string | null>(null);
   const [baitCounts, setBaitCounts] = useState<Record<string, number>>(() => ({ ...(profile.baits ?? {}) }));
   const baitPickRef = useRef<string | null>(null);
+  // 창: 인벤토리는 보기만, 상인(NPC)에게 가면 팔기·상점 창을 열 수 있다
+  const [panel, setPanel] = useState<null | "inventory" | "npc" | "sell" | "shop">(null);
+  const [npcNear, setNpcNear] = useState(false);
+  const npcNearRef = useRef(false);
+  useEffect(() => { setBaitCounts({ ...(profile.baits ?? {}) }); }, [profile.baits]);
   const chatId = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const meRef = useRef(room.sessionId);
@@ -112,6 +119,8 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
       else sfx.fail();
     });
     on("emoteKey", (i: number) => scene.emote(EMOTES[i]));
+    on("npcNear", (n: boolean) => { npcNearRef.current = n; setNpcNear(n); if (!n) setPanel((p) => (p === "npc" || p === "sell" || p === "shop" ? null : p)); });
+    on("npcKey", () => setPanel((p) => p ?? "npc"));
 
     room.onMessage("welcome", (m: any) => { setCode(m.code); setMapId(m.mapId); });
     const tick = setInterval(() => {
@@ -127,6 +136,7 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
     room.onLeave((c: number) => {
       // 정상 퇴장(1000, 4000)이 아니면 1분 동안 다시 접속을 시도한다
       if (c === 1000 || c === 4000) return;
+      if (c === 4002) { onLeave(); return; } // 같은 계정으로 다른 곳에서 들어와 밀려났다
       setLost(true);
       const token = room.reconnectionToken;
       const started = Date.now();
@@ -179,6 +189,12 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
     onLeave();
   };
 
+  // 팔거나 사고 나면 내 정보를 다시 읽고, 방에도 알려 모습·낚싯대를 맞춘다
+  const afterChange = async () => {
+    room.send("refresh");
+    await reload();
+  };
+
   const me = room.state?.players?.get(meRef.current);
   const isHost = room.state?.hostId === meRef.current;
   const map = BASE_MAPS[(mapId || "lake") as MapId];
@@ -203,6 +219,8 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
             <span className="panel chip">{map?.name}</span>
             <span className="panel chip">👥 {players}/{MAX_PLAYERS}</span>
             <span className="panel chip">{clock.night ? "🌙 밤" : "☀️ 낮"} · {Math.ceil(clock.left / 60000)}분</span>
+            <span className="panel chip">🪙 {profile.coins.toLocaleString()}</span>
+            <button className="btn small mint" onClick={() => { sfx.click(); setPanel("inventory"); }}>🎒 인벤토리</button>
             <button className="btn small ghost" onClick={leave}>나가기</button>
           </div>
           {/* 미끼: 종류와 남은 개수가 늘 보이고, 누르면 그 미끼를 쓴다(다시 누르면 안 쓴다) */}
@@ -277,6 +295,9 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
         )}
         {mini && <Minigame mini={mini} />}
         {!result && <div className="hint-bar">{hint}</div>}
+        {npcNear && !panel && (
+          <button className="btn sun npc-talk" onClick={() => { sfx.click(); setPanel("npc"); }}>🧑‍🌾 상인 아저씨와 이야기하기 {isTouch ? "" : "(E)"}</button>
+        )}
 
         <div className="emotes panel">
           {EMOTE_UI.map(([id, e, label], i) => (
@@ -291,6 +312,19 @@ export function RoomScreen({ joined, profile, onLeave, onRejoin }: {
 
         {result && <CatchCard result={result} onClose={() => setResult(null)} />}
       </div>
+      {panel === "inventory" && <Inventory onClose={() => setPanel(null)} reload={afterChange} canSell={false} />}
+      {panel === "sell" && <Inventory onClose={() => setPanel("npc")} reload={afterChange} />}
+      {panel === "shop" && <Shop onClose={() => setPanel("npc")} profile={profile} reload={afterChange} />}
+      {panel === "npc" && (
+        <Modal title="🧑‍🌾 상인 아저씨" onClose={() => setPanel(null)} narrow>
+          <p style={{ marginTop: 0 }}>어서 와! 잡은 물고기를 팔거나, 필요한 걸 사 가렴.</p>
+          <div style={{ display: "grid", gap: 10 }}>
+            <button className="btn sun" onClick={() => setPanel("sell")}>🐟 물고기 팔기</button>
+            <button className="btn mint" onClick={() => setPanel("shop")}>🛍️ 상점 (낚싯대·미끼·옷)</button>
+            <button className="btn ghost" onClick={() => setPanel(null)}>다음에 올게요</button>
+          </div>
+        </Modal>
+      )}
       {lost && <div className="leave-overlay"><div>연결이 끊겼어요<br />다시 연결하는 중... 🎣</div></div>}
     </>
   );
