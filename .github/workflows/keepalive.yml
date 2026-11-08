@@ -1,0 +1,14 @@
+# Render 무료 서버가 15분 안 쓰면 잠드는 것을 막기 위해 10분마다 서버 상태 주소를 한 번 열어 본다.
+# 정각에는 깃허브가 몰려 지연되므로 7분대에 맞춘다. 저장소에 60일 동안 활동이 없으면 깃허브가 이 예약을 꺼 버리니, 꺼졌다면 Actions 탭에서 다시 켠다.
+name: keepalive
+on:
+  schedule:
+    - cron: "7,17,27,37,47,57 * * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 서버 깨우기
+        run: curl --fail --silent --show-error --retry 3 --retry-delay 20 --retry-all-errors --max-time 90 https://fishing-gogo-server.onrender.com/health

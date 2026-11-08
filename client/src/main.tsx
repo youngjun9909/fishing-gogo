@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { SERVER_HTTP } from "./net";
 import { loadCharacterModel } from "./three/character";
 import "./styles.css";
+
+// 무료 서버는 한동안 안 쓰면 잠들어서 깨는 데 1분쯤 걸린다. 화면을 여는 순간 미리 깨워 두면 모델을 받고 로그인하는 동안 서버도 준비된다
+fetch(`${SERVER_HTTP}/health`, { mode: "no-cors" }).catch(() => undefined);
 
 // 캐릭터 모델(머리카락·옷·몸)을 모두 받은 뒤에 화면을 그린다. 못 받으면 옛 모양으로 바꾸지 않고 다시 시도하게 한다
 function Boot() {
