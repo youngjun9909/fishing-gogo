@@ -15,7 +15,16 @@ export function createGameServer(deps: Deps, validateMap: (data: unknown) => str
   server.define("fishing", createFishingRoom(deps));
   const api = createApi(deps.service, deps.authenticate, validateMap);
   // 매치메이킹 요청은 Colyseus가 처리하고, /api/ 요청만 여기서 처리한다
-  (server.transport as any).server.on("request", (req: any, res: any) => void api(req, res));
+  (server.transport as any).server.on("request", (req: any, res: any) => {
+    // Render 같은 호스팅이 "/"로 서버가 살아 있는지 확인한다. 아무도 답하지 않으면 멈춘 것으로 보고 접속을 끊는다
+    const path = String(req.url ?? "").split("?")[0];
+    if (path === "/" || path === "/health") {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+      return;
+    }
+    void api(req, res);
+  });
   return server;
 }
 
