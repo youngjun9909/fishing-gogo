@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { CYCLE_MS, DAY_MS, SPECIES, candidatesFor } from "@fishing/shared";
+import { CYCLE_MS, DAY_MS, MAX_ROD, RODS, SPECIES, candidatesFor, castDistance, rodEffects, rodLevelOf } from "@fishing/shared";
 import { startHarness, until, waitMessage } from "./harness";
 import type { Harness } from "./harness";
 
@@ -151,6 +151,27 @@ describe("낚시", () => {
     expect(rk.value[0].value).toBeGreaterThan(0);
   });
 
+  it("낚싯대 단계가 높으면 더 멀리 던지고 타이밍 칸이 넓어진다", async () => {
+    const base = await h.service.ensureProfile("basic");
+    const pro = await h.service.ensureProfile("pro");
+    await h.store.saveProfile({ ...pro, equipped: { rod: String(MAX_ROD) } });
+    void base;
+    const { clients } = await h.open(["basic", "pro"]);
+    const dist = (c: any) => Math.hypot(me(c).bobX - me(c).x, me(c).bobZ - me(c).z);
+    const bites = clients.map((c) => waitMessage(c, "bite"));
+    for (const c of clients) cast(c);
+    await Promise.all(bites);
+    const eff = rodEffects(MAX_ROD);
+    expect(dist(clients[0])).toBeCloseTo(castDistance(0.3), 1);
+    expect(dist(clients[1])).toBeCloseTo(castDistance(0.3) * eff.castMul, 1);
+    const zones: number[] = [];
+    for (const c of clients) {
+      c.send("hook");
+      zones.push((await waitMessage(c, "minigame")).zoneWidth);
+    }
+    expect(zones[1] / zones[0]).toBeCloseTo(eff.zoneMul, 2);
+  });
+
   it("입질 알림 뒤에 반응하지 않으면 놓친다", async () => {
     const { clients } = await h.open(["alice"]);
     const miss = waitMessage(clients[0], "result");
@@ -239,16 +260,16 @@ describe("경제와 도감", () => {
   it("돈이 부족하면 못 사고, 사면 입을 수 있다", async () => {
     const p0 = await h.service.ensureProfile("a");
     await expect(h.service.buy("a", "top-hoodie")).rejects.toThrow("돈이 부족");
-    await h.store.saveProfile({ ...p0, coins: 1000 });
+    await h.store.saveProfile({ ...p0, coins: 5000 });
     const p = await h.service.buy("a", "top-hoodie");
-    expect(p.coins).toBe(800);
+    expect(p.coins).toBe(3500);
     await expect(h.service.equip("a", "pants", "top-hoodie")).rejects.toThrow("입을 수 없");
     expect((await h.service.equip("a", "top", "top-hoodie")).equipped.top).toBe("top-hoodie");
   });
 
   it("상의·하의·신발을 따로 사고 각자 칸에만 입을 수 있다", async () => {
     const p0 = await h.service.ensureProfile("a");
-    await h.store.saveProfile({ ...p0, coins: 1000 });
+    await h.store.saveProfile({ ...p0, coins: 5000 });
     await h.service.buy("a", "top-hoodie");
     await h.service.buy("a", "pants-jeans");
     await expect(h.service.equip("a", "pants", "top-hoodie")).rejects.toThrow("입을 수 없");
@@ -256,6 +277,31 @@ describe("경제와 도감", () => {
     await h.service.equip("a", "top", "top-hoodie");
     const p = await h.service.equip("a", "pants", "pants-jeans");
     expect(p.equipped).toEqual({ top: "top-hoodie", pants: "pants-jeans" });
+  });
+
+  it("낚싯대는 한 단계씩 코인으로 올리고, 돈이 모자라거나 끝 단계면 거절한다", async () => {
+    const p0 = await h.service.ensureProfile("a");
+    await expect(h.service.upgradeRod("a")).rejects.toThrow("돈이 부족");
+    await h.store.saveProfile({ ...p0, coins: 200000 });
+    const p1 = await h.service.upgradeRod("a");
+    expect(rodLevelOf(p1.equipped)).toBe(1);
+    expect(p1.coins).toBe(200000 - RODS[1].price);
+    for (let i = 2; i <= MAX_ROD; i++) await h.service.upgradeRod("a");
+    await expect(h.service.upgradeRod("a")).rejects.toThrow("가장 좋은");
+    expect(rodLevelOf((await h.service.profile("a"))!.equipped)).toBe(MAX_ROD);
+  });
+
+  it("낚싯대 칸은 입기·벗기로 바꿀 수 없다(단계가 사라지지 않게)", async () => {
+    await h.service.ensureProfile("a");
+    await expect(h.service.equip("a", "rod", null)).rejects.toThrow("강화로만");
+  });
+
+  it("낚싯대 단계가 높을수록 멀리 던지고 기다림이 짧고 타이밍 칸이 넓다", () => {
+    const lo = rodEffects(0), hi = rodEffects(MAX_ROD);
+    expect(hi.castMul).toBeGreaterThan(lo.castMul);
+    expect(hi.waitMul).toBeLessThan(lo.waitMul);
+    expect(hi.zoneMul).toBeGreaterThan(lo.zoneMul);
+    expect(hi.farPower).toBeLessThan(lo.farPower);
   });
 
   it("전용 오라는 살 수 없고, 도감을 모두 채우면 전용 오라와 이모트를 받는다", async () => {

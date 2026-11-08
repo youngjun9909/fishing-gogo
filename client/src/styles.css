@@ -124,6 +124,24 @@ button { cursor: pointer; }
 .cell.unknown .nm { color: #a9a2b3; }
 .badge { display: inline-block; font-size: 12px; color: #fff; border-radius: 999px; padding: 2px 9px; }
 
+/* 상점: 낚싯대 */
+.rodtab { display: grid; grid-template-columns: 240px 1fr; gap: 16px; align-items: start; }
+.rod-view { display: flex; flex-direction: column; align-items: center; gap: 6px; background: linear-gradient(#e8f6ff, #fff4dd); border-radius: 18px; padding: 10px 10px 14px; }
+.rod-preview { width: 100%; height: 300px; }
+.rod-preview.tall { height: 360px; }
+.shop-split { display: grid; grid-template-columns: 250px 1fr; gap: 16px; align-items: start; }
+.cell { cursor: pointer; }
+.cell.pick { border-color: var(--pink-deep); background: #fff0f4; }
+.rod-fx { margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--ink-soft); text-align: center; line-height: 1.5; }
+.rod-list { display: grid; gap: 8px; }
+.rod-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #fff; border: 3px solid #f0eaf5; border-radius: 16px; padding: 8px 12px; cursor: pointer; }
+.rod-row.sel { border-color: var(--sky-deep); background: #eef9ff; }
+.rod-row.now { border-color: var(--mint-deep); }
+.rod-row.locked { opacity: 0.55; }
+.rod-row .nm { font-size: 17px; }
+.rod-row .sub { font-size: 13px; color: var(--ink-soft); }
+@media (max-width: 720px) { .rodtab, .shop-split { grid-template-columns: 1fr; } .rod-preview, .rod-preview.tall { height: 240px; } }
+
 /* 캐릭터 만들기 */
 .creator { position: absolute; right: 14px; top: 14px; bottom: 14px; width: min(420px, calc(100% - 28px)); padding: 18px; display: flex; flex-direction: column; gap: 10px; }
 .creator .scroll { overflow: auto; flex: 1; padding-right: 4px; }

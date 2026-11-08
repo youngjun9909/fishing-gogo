@@ -30,8 +30,8 @@ export function sellPrice(species: FishSpecies, size: number): number {
 }
 
 /** 던진 힘(0~1)이 크면 멀리 던진 것으로 본다 */
-export function reachOf(power: number): Reach {
-  return power >= 0.55 ? "far" : "near";
+export function reachOf(power: number, farPower = 0.55): Reach {
+  return power >= farPower ? "far" : "near";
 }
 
 export function candidatesFor(mapId: MapId, time: TimeOfDay, reach: Reach): FishSpecies[] {

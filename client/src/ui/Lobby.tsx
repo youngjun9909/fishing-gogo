@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BASE_MAPS, CODEX_REWARDS, ITEMS, SPECIES, codexSpeciesFor, itemById, sellPrice, speciesById } from "@fishing/shared";
+import * as THREE from "three";
+import { BASE_MAPS, CODEX_REWARDS, ITEMS, MAX_ROD, RODS, SPECIES, codexSpeciesFor, itemById, rodEffects, rodLevelOf, sellPrice, speciesById } from "@fishing/shared";
 import type { Appearance, CatchRecord, CodexEntry, MapId, PlayerProfile, ShopItem } from "@fishing/shared";
 import { getAudio, setMuted, setVolume, sfx } from "../audio";
 import { api, auth } from "../net";
-import { EYE, HAIR } from "../three/character";
+import { CharacterRig, EYE, HAIR } from "../three/character";
+import type { Look } from "../three/character";
 import { LobbyScene } from "../three/LobbyScene";
+import { buildRod } from "../three/rods";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
 
 type Modal = null | "create" | "join" | "inventory" | "codex" | "shop" | "settings";
@@ -264,9 +267,23 @@ const SLOT_NAME = { top: "상의", pants: "하의", shoes: "신발", aura: "오�
 const SLOT_EMOJI = { top: "👕", pants: "👖", shoes: "👟", aura: "✨" } as const;
 
 function Shop({ onClose, profile, reload }: { onClose: () => void; profile: PlayerProfile; reload: () => Promise<void> }) {
-  const [slot, setSlot] = useState<ShopItem["slot"]>("top");
+  const [slot, setSlot] = useState<ShopItem["slot"] | "rod">("rod");
+  const [pick, setPick] = useState<string | null>(null); // 미리 입어 볼 상품(null이면 지금 입은 그대로)
+  const changeSlot = (s: ShopItem["slot"] | "rod") => {
+    setSlot(s);
+    setPick(null);
+  };
   const [msg, setMsg] = useState("");
-  const items = ITEMS.filter((i) => i.slot === slot && (i.purchasable || profile.ownedItems.includes(i.id)));
+  const items = slot === "rod" ? [] : ITEMS.filter((i) => i.slot === slot && (i.purchasable || profile.ownedItems.includes(i.id)));
+
+  const previewLook: Look = useMemo(() => {
+    const equipped = { ...profile.equipped };
+    if (slot !== "rod" && pick) {
+      if (pick === "none") delete equipped[slot];
+      else equipped[slot] = pick;
+    }
+    return { appearance: profile.appearance, equipped };
+  }, [profile.appearance, profile.equipped, slot, pick]);
 
   const act = async (fn: () => Promise<unknown>, ok: string) => {
     try {
@@ -283,36 +300,196 @@ function Shop({ onClose, profile, reload }: { onClose: () => void; profile: Play
   return (
     <Modal title={`🛍️ 상점  🪙 ${profile.coins.toLocaleString()}`} onClose={onClose}>
       <div className="tabs">
+        <button className={`tab ${slot === "rod" ? "on" : ""}`} onClick={() => changeSlot("rod")}>🎣 낚싯대</button>
         {(["top", "pants", "shoes", "aura"] as const).map((s) => (
-          <button key={s} className={`tab ${slot === s ? "on" : ""}`} onClick={() => setSlot(s)}>{SLOT_EMOJI[s]} {SLOT_NAME[s]}</button>
+          <button key={s} className={`tab ${slot === s ? "on" : ""}`} onClick={() => changeSlot(s)}>{SLOT_EMOJI[s]} {SLOT_NAME[s]}</button>
         ))}
         <span className="hint" style={{ alignSelf: "center" }}>{msg}</span>
       </div>
-      <div className="grid">
-        <div className="cell">
+      {slot === "rod" && <RodTab profile={profile} act={act} />}
+      {slot !== "rod" && <div className="shop-split">
+        <div className="rod-view">
+          <CharacterPreview look={previewLook} slot={slot} />
+          <div className="nm" style={{ fontSize: 18 }}>{pick === "none" ? "기본 옷" : pick ? itemById(pick)?.name : profile.equipped[slot] ? itemById(profile.equipped[slot])?.name : "기본 옷"}</div>
+          <div className="hint">상품을 누르면 입어 볼 수 있어요</div>
+        </div>
+        <div className="grid">
+        <div className={`cell ${pick === "none" ? "pick" : ""}`} onClick={() => setPick("none")}>
           <div style={{ fontSize: 38 }}>🚫</div>
           <div className="nm">벗기</div>
-          <button className="btn small ghost" disabled={!profile.equipped[slot]} onClick={() => act(() => api("/api/equip", { slot, itemId: null }), "벗었어요")}>벗기</button>
+          <button className="btn small ghost" disabled={!profile.equipped[slot]} onClick={(e) => { e.stopPropagation(); void act(() => api("/api/equip", { slot, itemId: null }), "벗었어요"); }}>벗기</button>
         </div>
         {items.map((it) => {
           const owned = profile.ownedItems.includes(it.id);
           const worn = profile.equipped[slot] === it.id;
           return (
-            <div key={it.id} className={`cell ${worn ? "sel" : ""}`}>
+            <div key={it.id} className={`cell ${worn ? "sel" : ""} ${pick === it.id ? "pick" : ""}`} onClick={() => setPick(it.id)}>
               <div style={{ fontSize: 38 }}>{SLOT_EMOJI[it.slot]}</div>
               <div className="nm">{it.name}</div>
               {!it.purchasable && <span className="badge" style={{ background: RARITY_COLOR.legendary }}>도감 보상</span>}
               {owned ? (
-                <button className="btn small mint" onClick={() => act(() => api("/api/equip", { slot, itemId: worn ? null : it.id }), worn ? "벗었어요" : `${it.name}을 입었어요`)}>{worn ? "벗기" : "입기"}</button>
+                <button className="btn small mint" onClick={(e) => { e.stopPropagation(); void act(() => api("/api/equip", { slot, itemId: worn ? null : it.id }), worn ? "벗었어요" : `${it.name}을 입었어요`); }}>{worn ? "벗기" : "입기"}</button>
               ) : (
-                <button className="btn small sun" disabled={profile.coins < it.price} onClick={() => act(() => api("/api/buy", { itemId: it.id }), `${it.name}을 샀어요!`)}>🪙 {it.price}</button>
+                <button className="btn small sun" disabled={profile.coins < it.price} onClick={(e) => { e.stopPropagation(); void act(() => api("/api/buy", { itemId: it.id }), `${it.name}을 샀어요!`); }}>🪙 {it.price}</button>
               )}
             </div>
           );
         })}
-      </div>
+        </div>
+      </div>}
       <p className="hint" style={{ marginTop: 12 }}>입은 모습은 로비의 캐릭터와 방 안에서 바로 보여요.</p>
     </Modal>
+  );
+}
+
+/** 단계별 효과를 사람이 읽는 말로 */
+function rodEffectLines(level: number): string[] {
+  if (level === 0) return ["기본 낚싯대예요"];
+  const e = rodEffects(level);
+  return [
+    `던지는 거리 +${Math.round((e.castMul - 1) * 100)}%`,
+    `입질 기다리는 시간 -${Math.round((1 - e.waitMul) * 100)}%`,
+    `타이밍 칸 +${Math.round((e.zoneMul - 1) * 100)}%`,
+    `힘 ${Math.round(e.farPower * 100)}%만 줘도 멀리 던져요(희귀한 물고기가 사는 곳)`,
+  ];
+}
+
+/** 낚싯대 모델을 빙글빙글 돌려 보여 주는 작은 3D 화면 */
+function RodPreview({ level }: { level: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current!;
+    const w = el.clientWidth || 220, h = el.clientHeight || 300;
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(w, h);
+    el.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    const cam = new THREE.PerspectiveCamera(30, w / h, 0.1, 50);
+    cam.position.set(0, 0.05, 4.1);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa7bb, 1.7));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+    sun.position.set(2, 3, 4);
+    scene.add(sun);
+    const fx = buildRod(level);
+    const spin = new THREE.Group();
+    fx.group.rotation.z = 0.5;
+    spin.add(fx.group);
+    scene.add(spin);
+    let raf = 0;
+    const t0 = performance.now();
+    const loop = () => {
+      const t = (performance.now() - t0) / 1000;
+      spin.rotation.y = t * 0.9;
+      fx.update(t, false);
+      renderer.render(scene, cam);
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+    return () => {
+      cancelAnimationFrame(raf);
+      scene.traverse((o) => {
+        const m = o as THREE.Mesh;
+        m.geometry?.dispose?.();
+        const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+        (Array.isArray(mat) ? mat : mat ? [mat] : []).forEach((x) => x.dispose());
+      });
+      renderer.dispose();
+      renderer.forceContextLoss();
+      renderer.domElement.remove();
+    };
+  }, [level]);
+  return <div className="rod-preview" ref={ref} />;
+}
+
+/** 칸마다 잘 보이는 높이와 거리(캐릭터 키 약 2.6) */
+const PREVIEW_FOCUS: Record<string, { y: number; d: number }> = {
+  top: { y: 1.7, d: 5.6 },
+  pants: { y: 1.0, d: 5.4 },
+  shoes: { y: 0.55, d: 4.2 },
+  aura: { y: 1.4, d: 8 },
+};
+
+/** 내 캐릭터가 고른 상품을 입은 모습을 빙글빙글 돌려 보여 주는 작은 3D 화면 */
+function CharacterPreview({ look, slot }: { look: Look; slot: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const key = JSON.stringify(look) + slot;
+  useEffect(() => {
+    const el = ref.current!;
+    const w = el.clientWidth || 240, h = el.clientHeight || 340;
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(w, h);
+    el.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    const f = PREVIEW_FOCUS[slot] ?? PREVIEW_FOCUS.top;
+    const cam = new THREE.PerspectiveCamera(30, w / h, 0.1, 60);
+    cam.position.set(0, f.y, f.d);
+    cam.lookAt(0, f.y, 0);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xaab4c8, 1.9));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    sun.position.set(2, 4, 5);
+    scene.add(sun);
+    const rig = new CharacterRig(look);
+    scene.add(rig.root);
+    let raf = 0;
+    let last = performance.now();
+    const loop = () => {
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      rig.facing += dt * 0.7;
+      rig.update(dt, { moving: false, fishing: "idle" });
+      renderer.render(scene, cam);
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+    return () => {
+      cancelAnimationFrame(raf);
+      rig.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
+      renderer.domElement.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return <div className="rod-preview tall" ref={ref} />;
+}
+
+function RodTab({ profile, act }: { profile: PlayerProfile; act: (fn: () => Promise<unknown>, ok: string) => Promise<void> }) {
+  const mine = rodLevelOf(profile.equipped);
+  const next = mine < MAX_ROD ? mine + 1 : null;
+  const [view, setView] = useState(next ?? mine);
+  useEffect(() => setView(next ?? mine), [mine]); // 강화하면 다음 단계를 미리 보여 준다
+  const tier = RODS[view];
+  return (
+    <div className="rodtab">
+      <div className="rod-view">
+        <RodPreview level={view} />
+        <div className="nm" style={{ fontSize: 20 }}>{tier.name}</div>
+        <ul className="rod-fx">{rodEffectLines(view).map((l) => <li key={l}>{l}</li>)}</ul>
+      </div>
+      <div className="rod-list">
+        {RODS.map((r) => {
+          const state = r.level === mine ? "now" : r.level < mine ? "owned" : r.level === next ? "next" : "locked";
+          return (
+            <div key={r.level} className={`rod-row ${view === r.level ? "sel" : ""} ${state}`} onClick={() => setView(r.level)}>
+              <div>
+                <div className="nm">{r.level}단계 · {r.name}</div>
+                <div className="sub">{state === "now" ? "지금 쓰는 낚싯대" : state === "owned" ? "가지고 있어요" : state === "next" ? "다음 강화" : "앞 단계를 먼저 강화해요"}</div>
+              </div>
+              {state === "next" && (
+                <button className="btn small sun" disabled={profile.coins < r.price} onClick={(e) => { e.stopPropagation(); void act(() => api("/api/rod/upgrade", {}), `${r.name}로 강화했어요!`); }}>
+                  🪙 {r.price.toLocaleString()}
+                </button>
+              )}
+              {state === "now" && <span className="badge" style={{ background: "var(--mint-deep)" }}>사용 중</span>}
+            </div>
+          );
+        })}
+        <p className="hint">강화하면 줄을 던질 때 더 멀리 나가고, 입질이 빨리 오고, 타이밍 맞추기가 조금 쉬워져요. 효과는 모두에게 공정하도록 5단계에서도 약 30%예요.</p>
+      </div>
+    </div>
   );
 }
 

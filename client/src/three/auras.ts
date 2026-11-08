@@ -24,7 +24,7 @@ function glow() {
 }
 
 /** 빛나는 점(더하기 혼합이라 겹치면 밝아지고, 블룸으로 번진다) */
-function puff(color: THREE.ColorRepresentation, size: number, additive = true) {
+export function puff(color: THREE.ColorRepresentation, size: number, additive = true) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow(), color, transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, fog: false, toneMapped: false }));
   s.scale.setScalar(size * 1.7); // 낮의 밝은 배경에서도 보이도록 크게
   s.renderOrder = 5;

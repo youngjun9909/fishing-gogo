@@ -1,5 +1,8 @@
 import { buildAura } from "./auras";
+import { buildRod } from "./rods";
+import type { RodFx } from "./rods";
 import * as THREE from "three";
+import { rodLevelOf } from "@fishing/shared";
 import type { Appearance } from "@fishing/shared";
 import { lerpAngle } from "./engine";
 import { buildHair } from "./hair";
@@ -117,6 +120,8 @@ export interface Look {
   appearance: Appearance;
   equipped: Record<string, string>;
   shape?: string;
+  /** 낚시 중이 아니어도 낚싯대를 보여 준다(상점 미리보기용) */
+  showRod?: boolean;
 }
 
 /** 기본 체형: 머리 크기, 몸통 가로/세로, 다리와 팔 길이의 배율 */
@@ -425,6 +430,8 @@ export class CharacterRig {
   readonly rodTip = new THREE.Object3D();
   private rod = new THREE.Group();
   private auraGroup: THREE.Group | null = null;
+  private rodFx: RodFx | null = null;
+  private showRod = false;
   private auraFx: { update: (t: number) => void } | null = null; // 새 오라 5종(auras.ts)
   private icon: THREE.Sprite | null = null;
   private emote = "";
@@ -437,6 +444,7 @@ export class CharacterRig {
 
   constructor(look: Look) {
     this.outfitId = look.equipped.outfit ?? "";
+    this.showRod = !!look.showRod;
     if (glb) this.buildGlb(look);
     else this.build(look);
   }
@@ -552,10 +560,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
     model.traverse((o) => { if (o.name === "eyeL" || o.name === "eyeR") this.eyes.push(o); });
 
     // 낚싯대는 낚시 중에만 보이고 왼쪽 위 팔(옛 armR)의 손 위치에 붙인다
-    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 2.2, 8), toon("#9a6a3a"));
-    stick.rotation.x = Math.PI / 2 - 0.5;
-    stick.position.set(0, 0.2, 0.9);
-    this.rod.add(stick);
+    this.setRod(rodLevelOf(look.equipped));
     this.rodTip.position.set(0, 1.1, 1.95);
     this.rod.add(this.rodTip);
     this.rod.position.set(0.18, -0.52, 0);
@@ -705,11 +710,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
     this.body.add(this.head);
 
     // 낚싯대는 오른손에 들고, 낚시 중이 아니면 숨긴다
-    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 2.2, 8), toon("#9a6a3a"));
-    stick.position.y = 1.0;
-    stick.rotation.x = Math.PI / 2 - 0.5;
-    stick.position.set(0, 0.2, 0.9);
-    this.rod.add(stick);
+    this.setRod(rodLevelOf(equipped));
     this.rodTip.position.set(0, 1.1, 1.95);
     this.rod.add(this.rodTip);
     this.rod.position.set(0, -0.45, 0);
@@ -717,6 +718,15 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
     this.armR.add(this.rod);
 
     if (equipped.aura) this.makeAura(equipped.aura);
+  }
+
+  /** 낚싯대 단계에 맞는 모델을 손에 쥐여 준다. 옛 막대와 같은 자리·방향에 놓아 줄 끝(rodTip)이 그대로 맞는다 */
+  private setRod(level: number) {
+    const fx = buildRod(level);
+    fx.group.rotation.x = Math.PI / 2 - 0.5;
+    fx.group.position.set(0, 0.2, 0.9);
+    this.rod.add(fx.group);
+    this.rodFx = fx;
   }
 
   private makeAura(id: string) {
@@ -766,7 +776,8 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
     this.root.rotation.y = this.facing;
 
     const fishing = pose.fishing !== "idle";
-    this.rod.visible = fishing;
+    this.rod.visible = fishing || this.showRod;
+    if (this.rod.visible) this.rodFx?.update(this.t, pose.fishing === "minigame");
     // 멈춤↔걷기 전환을 부드럽게(갑자기 자세가 튀지 않게)
     this.moveBlend += ((pose.moving && !fishing ? 1 : 0) - this.moveBlend) * Math.min(1, dt * 9);
     const swing = this.moveBlend;

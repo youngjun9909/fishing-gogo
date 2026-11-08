@@ -23,10 +23,11 @@ const BODY_SIZE: Record<string, [number, number]> = {
 };
 
 const RARITY_STATS: Record<Rarity, { price: number; weight: number; zone: number }> = {
-  common: { price: 20, weight: 100, zone: 0.46 },
-  rare: { price: 90, weight: 40, zone: 0.36 },
-  veryRare: { price: 350, weight: 12, zone: 0.26 },
-  legendary: { price: 2000, weight: 3, zone: 0.17 },
+  // 가격은 "한 시간 낚으면 약 1500코인"을 목표로 잡았다(옛 값의 약 1/4)
+  common: { price: 5, weight: 100, zone: 0.46 },
+  rare: { price: 23, weight: 40, zone: 0.36 },
+  veryRare: { price: 88, weight: 12, zone: 0.26 },
+  legendary: { price: 500, weight: 3, zone: 0.17 },
 };
 
 const FEATURES = [

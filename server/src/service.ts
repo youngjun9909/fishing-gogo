@@ -1,5 +1,5 @@
 import {
-  CODEX_REWARDS, EMOTES, ITEMS, MAX_CUSTOM_MAPS, SECRET_EMOTES, codexRatio, itemById, sellPrice,
+  CODEX_REWARDS, EMOTES, ITEMS, MAX_CUSTOM_MAPS, MAX_ROD, RODS, rodLevelOf, SECRET_EMOTES, codexRatio, itemById, sellPrice,
   speciesById,
 } from "@fishing/shared";
 import type { Appearance, CatchRecord, MapId, PlayerProfile } from "@fishing/shared";
@@ -101,7 +101,21 @@ export class GameService {
     return p;
   }
 
+  /** 낚싯대를 한 단계 올린다. 단계는 입은 것(equipped)의 "rod" 값으로 저장한다 */
+  async upgradeRod(playerId: string): Promise<PlayerProfile> {
+    const p = await this.mustProfile(playerId);
+    const level = rodLevelOf(p.equipped);
+    if (level >= MAX_ROD) throw new Error("이미 가장 좋은 낚싯대예요");
+    const next = RODS[level + 1];
+    if (p.coins < next.price) throw new Error("돈이 부족해요");
+    p.coins -= next.price;
+    p.equipped.rod = String(next.level);
+    await this.store.saveProfile(p);
+    return p;
+  }
+
   async equip(playerId: string, slot: string, itemId: string | null): Promise<PlayerProfile> {
+    if (slot === "rod") throw new Error("낚싯대는 강화로만 바꿀 수 있어요");
     const p = await this.mustProfile(playerId);
     if (itemId === null) {
       delete p.equipped[slot];
