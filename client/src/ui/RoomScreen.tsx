@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Room } from "colyseus.js";
-import { BAITS, BASE_MAPS, CODEX_REWARDS, CYCLE_MS, DAY_MS, EMOTES, MAX_PLAYERS, RECONNECT_SECONDS, cursorAt, speciesById } from "@fishing/shared";
+import { BAITS, BASE_MAPS, CODEX_REWARDS, CYCLE_MS, DAY_MS, EMOTES, MAX_PLAYERS, RECONNECT_SECONDS, cursorAt, rodLevelOf, speciesById } from "@fishing/shared";
 import type { MapId, PlayerProfile, Rarity } from "@fishing/shared";
 import type { Joined } from "../App";
 import { sfx, startBgm, stopBgm } from "../audio";
@@ -90,7 +90,7 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
     sceneRef.current = scene;
     const off: Array<() => void> = [];
     const on = (t: string, f: (d: any) => void) => off.push(scene.bus.on(t, f));
-    on("chat", (m) => setChat((c) => [...c.slice(-7), { id: ++chatId.current, name: m.name, text: m.text }]));
+    on("chat", (m) => setChat((c) => [...c.slice(-99), { id: ++chatId.current, name: m.name, text: m.text }]));
     on("ranking", setRank);
     on("baitLeft", (m: { id: string | null; left: number; out?: string }) => {
       if (m.out && baitPickRef.current === m.out) { setToast("미끼를 다 썼어요"); setTimeout(() => setToast(""), 2200); }
@@ -273,7 +273,7 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
 
         <div className="chat">
           <div className="log">
-            {chat.slice(-6).map((c) => (
+            {[...chat].reverse().map((c) => (
               <div className="msg" key={c.id}><b>{c.name}</b>{c.text}</div>
             ))}
           </div>
@@ -312,8 +312,8 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
 
         {result && <CatchCard result={result} onClose={() => setResult(null)} />}
       </div>
-      {panel === "inventory" && <Inventory onClose={() => setPanel(null)} reload={afterChange} canSell={false} />}
-      {panel === "sell" && <Inventory onClose={() => setPanel("npc")} reload={afterChange} />}
+      {panel === "inventory" && <Inventory onClose={() => setPanel(null)} reload={afterChange} rod={rodLevelOf(profile.equipped)} canSell={false} />}
+      {panel === "sell" && <Inventory onClose={() => setPanel("npc")} reload={afterChange} rod={rodLevelOf(profile.equipped)} />}
       {panel === "shop" && <Shop onClose={() => setPanel("npc")} profile={profile} reload={afterChange} />}
       {panel === "npc" && (
         <Modal title="🧑‍🌾 상인 아저씨" onClose={() => setPanel(null)} narrow>

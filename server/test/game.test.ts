@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, SPECIES, baitEffects, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf } from "@fishing/shared";
+import { CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, SPECIES, baitEffects, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf, sellPrice } from "@fishing/shared";
 import { startHarness, until, waitMessage } from "./harness";
 import type { Harness } from "./harness";
 
@@ -262,6 +262,13 @@ describe("경제와 도감", () => {
     expect(res.coins).toBe(100 + res.earned);
     expect(await h.service.inventory("a")).toHaveLength(0);
     expect(await h.service.codex("a")).toHaveLength(1);
+  });
+
+  it("낚싯대 단계마다 판매가가 5%씩 늘어난다", () => {
+    const sp = SPECIES.find((s) => s.id === "common-01")!;
+    const base = sellPrice(sp, 30);
+    expect(sellPrice(sp, 30, MAX_ROD)).toBe(Math.round(base * (1 + 0.05 * MAX_ROD)));
+    expect(sellPrice(sp, 30, 1)).toBeGreaterThanOrEqual(base);
   });
 
   it("남의 물고기나 없는 물고기는 팔 수 없다", async () => {

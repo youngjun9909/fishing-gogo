@@ -24,9 +24,12 @@ export function isRareOrBetter(r: Rarity): boolean {
   return RARITY_ORDER.indexOf(r) >= RARITY_ORDER.indexOf("rare");
 }
 
-export function sellPrice(species: FishSpecies, size: number): number {
+/** 낚싯대 한 단계마다 판매가 +5% */
+export const ROD_SELL_BONUS = 0.05;
+
+export function sellPrice(species: FishSpecies, size: number, rodLevel = 0): number {
   const avg = (species.minSize + species.maxSize) / 2;
-  return Math.max(1, Math.round((species.basePrice * size) / avg));
+  return Math.max(1, Math.round(((species.basePrice * size) / avg) * (1 + ROD_SELL_BONUS * rodLevel)));
 }
 
 /** 던진 힘(0~1)이 크면 멀리 던진 것으로 본다 */

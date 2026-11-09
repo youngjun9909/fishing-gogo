@@ -78,7 +78,7 @@ export class GameService {
     let earned = 0;
     for (const c of removed) {
       const sp = speciesById(c.speciesId);
-      if (sp) earned += sellPrice(sp, c.size);
+      if (sp) earned += sellPrice(sp, c.size, rodLevelOf(p.equipped));
     }
     p.coins += earned;
     await this.store.saveProfile(p);

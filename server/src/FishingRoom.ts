@@ -355,7 +355,7 @@ export function createFishingRoom(deps: RoomDeps) {
       const species = f.species;
       const size = rollSize(deps.rng, species);
       const { record, rewards, isNew, isRecord } = await deps.service.recordCatch(p.playerId, species.id, size, this.state.mapId as MapId);
-      const price = sellPrice(species, size);
+      const price = sellPrice(species, size, this.rods.get(sessionId) ?? 0);
       this.addScore(sessionId, species, size, price);
       client?.send("result", { success: true, reason, catch: record, price, isNew, isRecord, rewards: rewards.map((r) => r.id) });
       this.broadcast("caught", { sessionId, speciesId: species.id, size }, { except: client });

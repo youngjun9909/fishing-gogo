@@ -169,7 +169,11 @@ button { cursor: pointer; }
 .rank li { display: flex; justify-content: space-between; gap: 8px; background: #fff; border-radius: 10px; padding: 4px 9px; }
 .rank li:first-child { background: #fff4c9; }
 .chat { position: absolute; left: 12px; bottom: 92px; width: min(340px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
-.chat .log { display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow: hidden; justify-content: flex-end; }
+/* column-reverse: 맨 아래(최신)에 붙어 있고, 위로 스크롤하면 지난 채팅이 보인다 */
+.chat .log { display: flex; flex-direction: column-reverse; gap: 4px; max-height: 150px; overflow-y: auto; pointer-events: auto; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.35) transparent; }
+.chat .log::-webkit-scrollbar { width: 4px; }
+.chat .log::-webkit-scrollbar-track { background: transparent; }
+.chat .log::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.35); border-radius: 4px; }
 .chat .msg { background: rgba(255, 255, 255, 0.88); border-radius: 14px; padding: 5px 11px; font-size: 15px; width: fit-content; max-width: 100%; word-break: break-all; animation: pop 0.15s; }
 .chat .msg b { color: var(--pink-deep); font-weight: normal; margin-right: 6px; }
 .chat input { pointer-events: auto; }
@@ -235,7 +239,6 @@ button { cursor: pointer; }
   .chat { left: 8px; bottom: 100px; width: calc(100vw - 16px); }
   .chat .log { max-height: 90px; }
   .chat .msg { font-size: 14px; padding: 4px 10px; }
-  .chat .msg:nth-last-child(n+4) { display: none; }
   .charge { bottom: 140px; }
   .stick { left: 14px; bottom: 200px; width: 112px; height: 112px; }
   .fishbtn { right: 14px; bottom: 200px; width: 90px; height: 90px; font-size: 20px; }
@@ -263,7 +266,6 @@ button { cursor: pointer; }
   .chat { left: 8px; bottom: 56px; width: min(300px, 40vw); }
   .chat .log { max-height: 64px; }
   .chat .msg { font-size: 13px; padding: 3px 9px; }
-  .chat .msg:nth-last-child(n+3) { display: none; }
   .charge { bottom: 96px; }
   .stick { left: 14px; bottom: 12px; width: 96px; height: 96px; }
   .fishbtn { right: 14px; bottom: 12px; width: 84px; height: 84px; }

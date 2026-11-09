@@ -12,6 +12,9 @@ export interface Joined {
   mapId: string;
 }
 
+// Lobby가 캐릭터 만들기 화면을 여는 조건과 같다
+const isNewbie = (p: PlayerProfile) => p.nickname === "낚시꾼" && p.titles.length === 0 && p.claimedRewards.length === 0;
+
 export default function App() {
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [joined, setJoined] = useState<Joined | null>(null);
@@ -65,7 +68,8 @@ export default function App() {
 
   // 초대 링크로 들어왔고 이미 로그인되어 있으면 바로 입장
   useEffect(() => {
-    if (profile && pendingRoom && !joined) void joinRoom(pendingRoom);
+    // 처음 가입한 사람은 로비에서 닉네임·꾸미기를 마친 뒤(닉네임이 바뀐 뒤)에 들어간다
+    if (profile && pendingRoom && !joined && !isNewbie(profile)) void joinRoom(pendingRoom);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, pendingRoom]);
 
@@ -114,7 +118,7 @@ function Login({ onDone, invite, error }: { onDone: () => Promise<void>; invite:
           퐁당
           <small>친구들과 함께 떠나는 3D 낚시 여행</small>
         </h1>
-        {invite && <p className="hint">초대받았어요! 로그인하면 <b>{invite}</b> 방으로 바로 들어가요.</p>}
+        {invite && <p className="hint">초대받았어요! 로그인 후 캐릭터를 꾸미면 <b>{invite}</b> 방으로 들어가요.</p>}
         <div className="stack">
           <button
             className="btn kakao"

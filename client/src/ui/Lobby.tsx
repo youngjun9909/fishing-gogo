@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { BAITS, BASE_MAPS, CODEX_REWARDS, ITEMS, MAX_ROD, RODS, SPECIES, codexSpeciesFor, itemById, rodEffects, rodLevelOf, sellPrice, speciesById } from "@fishing/shared";
+import { BAITS, BASE_MAPS, CODEX_REWARDS, ITEMS, MAX_ROD, ROD_SELL_BONUS, RODS, SPECIES, codexSpeciesFor, itemById, rodEffects, rodLevelOf, sellPrice, speciesById } from "@fishing/shared";
 import type { Appearance, CatchRecord, CodexEntry, MapId, PlayerProfile, ShopItem } from "@fishing/shared";
 import { getAudio, setMuted, setVolume, sfx } from "../audio";
 import { api, auth } from "../net";
@@ -99,7 +99,7 @@ export function Lobby(props: {
 
       {modal === "create" && <CreateRoom onClose={() => setModal(null)} onPick={(m) => props.onCreate(m)} />}
       {modal === "join" && <JoinRoom onClose={() => setModal(null)} onJoin={props.onJoin} />}
-      {modal === "inventory" && <Inventory onClose={() => setModal(null)} reload={props.reload} />}
+      {modal === "inventory" && <Inventory onClose={() => setModal(null)} reload={props.reload} rod={rodLevelOf(profile.equipped)} />}
       {modal === "codex" && <Codex onClose={() => setModal(null)} profile={profile} />}
       {modal === "shop" && <Shop onClose={() => setModal(null)} profile={profile} reload={props.reload} />}
       {modal === "settings" && <Settings onClose={() => setModal(null)} onLogout={props.onLogout} reload={props.reload} />}
@@ -172,11 +172,11 @@ function useFetch<T>(path: string, deps: unknown[] = []) {
   return [data, () => setTick((t) => t + 1)] as const;
 }
 
-export function Inventory({ onClose, reload, canSell = true }: { onClose: () => void; reload: () => Promise<void>; canSell?: boolean }) {
+export function Inventory({ onClose, reload, rod, canSell = true }: { onClose: () => void; reload: () => Promise<void>; rod: number; canSell?: boolean }) {
   const [list, refetch] = useFetch<CatchRecord[]>("/api/inventory");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState("");
-  const total = (list ?? []).filter((c) => sel.has(c.id)).reduce((a, c) => a + sellPrice(speciesById(c.speciesId)!, c.size), 0);
+  const total = (list ?? []).filter((c) => sel.has(c.id)).reduce((a, c) => a + sellPrice(speciesById(c.speciesId)!, c.size, rod), 0);
   const sorted = [...(list ?? [])].sort((a, b) => b.caughtAt - a.caughtAt);
 
   const sell = async () => {
@@ -216,7 +216,7 @@ export function Inventory({ onClose, reload, canSell = true }: { onClose: () => 
             >
               <FishIcon sp={sp} size={92} />
               <div className="nm">{sp.name}</div>
-              <div className="sub">{c.size}cm · 🪙 {sellPrice(sp, c.size)}</div>
+              <div className="sub">{c.size}cm · 🪙 {sellPrice(sp, c.size, rod)}</div>
               <span className="badge" style={{ background: RARITY_COLOR[sp.rarity] }}>{RARITY_LABEL[sp.rarity]}</span>
             </button>
           );
@@ -358,6 +358,7 @@ function rodEffectLines(level: number): string[] {
     `입질 기다리는 시간 -${Math.round((1 - e.waitMul) * 100)}%`,
     `타이밍 칸 +${Math.round((e.zoneMul - 1) * 100)}%`,
     `힘 ${Math.round(e.farPower * 100)}%만 줘도 멀리 던져요(희귀한 물고기가 사는 곳)`,
+    `물고기 판매가 +${Math.round(ROD_SELL_BONUS * level * 100)}%`,
   ];
 }
 
