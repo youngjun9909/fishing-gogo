@@ -35,11 +35,11 @@ describe("크루즈 맵 규칙", () => {
         for (const r of ["near", "far"] as const) expect(candidatesFor(id, t, r).length).toBeGreaterThan(0);
   });
 
-  it("전용 물고기가 정해지기 전에는 부두 물고기를 임시로 따라 쓴다", () => {
-    const pier = SPECIES.filter((s) => s.maps.includes("pier") && s.rarity !== "legendary" && s.rarity !== "mythic"); // 부두 전설·신화는 부두에서만 나온다
-    const cruise = codexSpeciesFor("cruise");
-    expect(pier.every((s) => cruise.includes(s))).toBe(true);
-    expect(cruise.length).toBeGreaterThan(pier.length); // 공통 물고기도 함께
+  it("크루즈는 전용 물고기(일반 28종)를 쓰고 부두 물고기는 나오지 않는다", () => {
+    const own = SPECIES.filter((s) => s.maps.includes("cruise") && s.id.startsWith("cruise-"));
+    expect(own.filter((s) => s.rarity === "common" || s.rarity === "rare" || s.rarity === "veryRare")).toHaveLength(28);
+    const pierOnly = SPECIES.filter((s) => s.maps.includes("pier") && !s.maps.includes("cruise"));
+    expect(codexSpeciesFor("cruise").some((s) => pierOnly.includes(s))).toBe(false);
   });
 });
 

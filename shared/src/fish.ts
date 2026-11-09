@@ -127,8 +127,7 @@ const LAKE = build("lake", ["lake"], `
 연화봉황어:m:round:d:f
 `);
 
-// shortcut: 크루즈는 전용 물고기가 정해지기 전까지 부두 물고기를 임시로 같이 쓴다, 전용 목록이 정해지면 "cruise"를 빼고 새로 만든다
-const PIER = build("pier", ["pier", "cruise"], `
+const PIER = build("pier", ["pier"], `
 도다리:c:flat:a:n
 광어:r:flat:a:a
 우럭:c:bass:a:a
@@ -216,6 +215,34 @@ const CRUISE = build("cruise", ["cruise"], `
 황금송곳니어:l:bass:d:f
 심연의 흑룡:m:eel:n:f
 태초의 성운어:m:slim:n:f
+흰동가리:c:round:d:n
+블루탱:c:round:d:n
+나비고기:c:round:d:n
+청소놀래기:c:slim:d:n
+앵무고기:r:bass:d:f
+쥐돔:r:round:d:f
+해룡고기:r:slim:a:n
+거북복:r:puffer:d:f
+만타가오리:v:ray:d:f
+무지개비늘고기:v:slim:d:f
+쥐꼬리고기:c:slim:n:f
+달고기:c:round:n:f
+독사고기:r:slim:n:f
+도깨비상어:r:shark:n:f
+통안어:r:round:n:f
+등불갈치:r:eel:n:f
+산갈치:v:eel:n:f
+대왕오징어:v:squid:n:f
+주름상어:v:eel:n:f
+심해 해파리고기:v:squid:n:f
+풍선복어:c:puffer:d:n
+색종이고기:c:round:a:n
+리본장어:c:eel:a:n
+샴페인고기:r:round:n:f
+폭죽복어:r:puffer:n:f
+파티모자고기:r:round:a:n
+디스코고기:v:round:n:f
+불꽃놀이고기:v:slim:n:f
 `);
 
 export const SPECIES: FishSpecies[] = [...COMMON, ...LAKE, ...PIER, ...ICE, ...CRUISE];

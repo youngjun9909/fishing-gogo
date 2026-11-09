@@ -77,7 +77,7 @@ export interface Bait {
 export const BAITS: Bait[] = [
   { id: "bait-worm", name: "지렁이 미끼", price: 50, pack: 10, desc: "입질이 빨리 와요 (기다리는 시간 -30%)" },
   { id: "bait-glitter", name: "반짝이 미끼", price: 120, pack: 5, desc: "희귀 이상 물고기가 약 1.7배 잘 물려요" },
-  { id: "bait-gold", name: "황금 미끼", price: 600, pack: 3, desc: "일반은 안 나와요! 희귀 이상만, 밤에 멀리 던지면 매우 희귀 약 24%·전설 약 9%, 타이밍 칸 +15%" },
+  { id: "bait-gold", name: "황금 미끼", price: 600, pack: 1, desc: "일반은 안 나와요! 희귀 이상만, 밤에 멀리 던지면 매우 희귀 약 24%·전설 약 9%, 타이밍 칸 +15%" },
 ]
 export const MAX_BAIT = 99;
 
