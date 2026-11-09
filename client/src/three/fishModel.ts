@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { CUSTOM_MODELS } from "./legendModels";
 import type { FishSpecies } from "@fishing/shared";
 
 // 둥글둥글하고 윤기 나는 장난감 같은 물고기. 뾰족한 모서리 없이 부드러운 모양으로 만든다.
@@ -28,7 +29,7 @@ const DESIGN: Record<string, Design> = {
   송사리: D("#bfe0a8", "#ffd84a", "plain", { belly: "#f6ffe8", body: "round", scale: 0.8 }),
   미꾸라지: D("#b89a6a", "#7a5a3a", "freckles", { belly: "#e8d8b0", body: "ribbon", features: ["whiskers"] }),
   메기: D("#6a6a78", "#3a3a48", "mottled", { belly: "#c8c8d4", body: "catfish", features: ["whiskers"] }),
-  가물치: D("#7a6a3a", "#3a2a18", "mottled", { belly: "#d8c890", body: "catfish" }),
+  가물치: D("#7a6a3a", "#3a2a18", "mottled", { belly: "#d8c890", body: "snakehead" }),
   블루길: D("#5a8a6a", "#2a4a6a", "bands", { belly: "#ffa860", body: "round" }),
   배스: D("#7ab06a", "#2f4a2a", "sidestripe", { belly: "#eef4d8", body: "bass" }),
   숭어: D("#9ab4c4", "#6a8090", "plain", { belly: "#f6fafc", body: "slim" }),
@@ -56,7 +57,7 @@ const DESIGN: Record<string, Design> = {
   호수의수호어: D("#4a78c8", "#ffd84a", "plain", { belly: "#e8f2ff", body: "whale", features: ["bumps"] }),
   용잉어: D("#2fa89a", "#ffd84a", "patches", { belly: "#e8fff4", body: "ribbon", features: ["whiskers", "horn", "bumps"], glow: true }),
   안개의여왕어: D("#c8c0f0", "#ffffff", "plain", { belly: "#f6f4ff", body: "slim", features: ["bigtail"], glow: true }),
-  심연의가물치: D("#3a3a58", "#8a8aff", "mottled", { belly: "#8a8ab8", body: "catfish", glow: true }),
+  심연의가물치: D("#3a3a58", "#8a8aff", "mottled", { belly: "#8a8ab8", body: "snakehead", glow: true }),
   은빛메기: D("#c8ccd8", "#8890a0", "mottled", { belly: "#f4f6fa", body: "catfish", features: ["whiskers"], glow: true }),
   // 부두
   광어: D("#9a7a52", "#5a4228", "mottled", { belly: "#f0e4cc", body: "flat" }),
@@ -77,7 +78,7 @@ const DESIGN: Record<string, Design> = {
   오징어: D("#f0c8b8", "#c8645a", "freckles", { belly: "#fff0e8", body: "squid", scale: 1.35 }),
   갑오징어: D("#d8b8a0", "#6a4a38", "stripes", { belly: "#f6e8d8", body: "squid", scale: 1.35 }),
   문어: D("#d8604a", "#f6c8b8", "freckles", { body: "octopus" }),
-  대왕문어: D("#9a4ac8", "#ffd0ff", "freckles", { body: "octopus", glow: true, scale: 1.5 }),
+  대왕문어: D("#e0643a", "#ffe6b0", "freckles", { body: "octopus", glow: true, scale: 1.5 }),
   가오리: D("#8a98a8", "#4a5868", "spots", { belly: "#ffffff", body: "ray" }),
   까치상어: D("#5a6a7a", "#ffffff", "spots", { belly: "#f4f6f8", body: "shark" }),
   아귀: D("#8a6a4a", "#4a3020", "mottled", { belly: "#d8c8a8", body: "round", features: ["lure", "bigmouth"], scale: 1.1 }),
@@ -87,7 +88,7 @@ const DESIGN: Record<string, Design> = {
   형광오징어: D("#5ae8d8", "#ffffff", "freckles", { belly: "#d8fff8", body: "squid", scale: 1.35, glow: true }),
   달빛갈치: D("#e8f0ff", "#9ab0ff", "plain", { belly: "#ffffff", body: "ribbon", glow: true, scale: 1.45, features: ["curvy"] }),
   리바이어던: D("#2a6a8a", "#ffd84a", "plain", { belly: "#d8f0f4", body: "whale", features: ["bumps"], glow: true }),
-  크라켄: D("#6a3aa8", "#ff7ad8", "freckles", { body: "octopus", glow: true, scale: 1.8 }),
+  크라켄: D("#2a3a6a", "#5affd0", "mottled", { body: "octopus", glow: true, scale: 1.8 }),
   // 겨울 호수
   빙어: D("#d8ecf6", "#a8d0e8", "plain", { belly: "#ffffff", body: "slim", scale: 0.85 }),
   송어: D("#9ab0a8", "#f08090", "sidestripe", { belly: "#f6f8f4", body: "slim" }),
@@ -107,6 +108,34 @@ const DESIGN: Record<string, Design> = {
   프로스트드래곤피쉬: D("#8ad0ff", "#ffffff", "plain", { belly: "#e8f6ff", body: "ribbon", features: ["horn", "bumps"], glow: true, scale: 1.2 }),
   눈의여왕대구: D("#e8f4ff", "#8ad0f0", "spots", { belly: "#ffffff", body: "bass", features: ["bumps", "chinbarbel"], glow: true }),
   북극광철갑상어: D("#6ae8c8", "#a88aff", "stripes", { belly: "#e8fff8", body: "shark", features: ["bumps"], glow: true }),
+  // 직접 색을 정하지 않았던 종(실제 색에 맞춘다)
+  누치: D("#c4b89a", "#6a5a40", "plain", { belly: "#f4ecd8", body: "carp", features: ["whiskers"] }),
+  끄리: D("#b8c8d0", "#6a8090", "plain", { belly: "#f4f8fa", body: "slim" }),
+  모래무지: D("#d8c89a", "#6a5a3a", "spots", { belly: "#f4ecd0", body: "slim", scale: 0.9, features: ["whiskers"] }),
+  참마자: D("#b0b8a8", "#7a8a70", "plain", { belly: "#f4f4ec", body: "carp" }),
+  갈겨니: D("#9ab0b8", "#ff8a40", "sidestripe", { belly: "#f6f8f8", body: "slim", scale: 0.8 }),
+  버들치: D("#8a8a5a", "#3a3a22", "mottled", { belly: "#e8e4c8", body: "slim", scale: 0.8 }),
+  향어: D("#8a7a4a", "#c8b070", "freckles", { belly: "#e8d8a0", body: "carp" }),
+  초어: D("#7a8a5a", "#4a5a34", "plain", { belly: "#e8ecd0", body: "carp" }),
+  백련어: D("#c8d0d8", "#8a98a8", "plain", { belly: "#ffffff", body: "carp" }),
+  납자루: D("#b8c0c8", "#3aa8c8", "sidestripe", { belly: "#f4f8ff", body: "round", scale: 0.8 }),
+  돌고기: D("#a8a890", "#4a4a3a", "plain", { belly: "#eceadc", body: "slim", scale: 0.85 }),
+  쉬리: D("#a8b8a0", "#d88a3a", "sidestripe", { belly: "#f4f6ec", body: "slim", scale: 0.85 }),
+  퉁가리: D("#7a6a4a", "#d8b04a", "bands", { belly: "#e8d8a0", body: "catfish", scale: 0.8, features: ["whiskers"] }),
+  가시고기: D("#8a9a6a", "#d84a3a", "plain", { belly: "#f6e8d8", body: "round", scale: 0.75 }),
+  동사리: D("#6a5a3a", "#2a2418", "mottled", { belly: "#c8b890", body: "catfish" }),
+  쥐노래미: D("#8a7a4a", "#4a3a20", "mottled", { belly: "#d8cc9a", body: "round" }),
+  레이크송어: D("#7a8a80", "#e8e4d0", "spots", { belly: "#f2f2e8", body: "slim" }),
+  북극송어: D("#6a8a98", "#f08a50", "spots", { belly: "#ff9a60", body: "slim" }),
+  흰송어: D("#c0c8d0", "#8a98a8", "plain", { belly: "#ffffff", body: "slim" }),
+  얼음붕어: D("#b8c0a8", "#7a8a68", "plain", { belly: "#f0f2e0", body: "carp" }),
+  빙하메기: D("#8aa0b0", "#5a7080", "mottled", { belly: "#d8e4ee", body: "catfish", features: ["whiskers"] }),
+  설원잉어: D("#e8e4d8", "#f0a060", "patches", { belly: "#ffffff", body: "carp", features: ["whiskers"] }),
+  얼음장어: D("#6a7a88", "#3a4858", "plain", { belly: "#c8d4dc", body: "ribbon" }),
+  북극가자미: D("#8a96a0", "#4a5a68", "mottled", { belly: "#e8eef2", body: "flat" }),
+  얼음도다리: D("#b0b8bc", "#6a7880", "mottled", { belly: "#eef2f4", body: "flat" }),
+  남극빙어: D("#e0f0f8", "#a8d0e8", "plain", { belly: "#ffffff", body: "slim", scale: 0.85 }),
+  한파대구: D("#8a9078", "#4a5040", "spots", { belly: "#eceee0", body: "bass", features: ["chinbarbel"] }),
   하얀유령어: D("#f4f8ff", "#cfe4ff", "plain", { belly: "#ffffff", body: "slim", glow: true }),
 };
 
@@ -301,16 +330,86 @@ const BODIES: Record<string, BodyDef> = {
   octopus: { scale: [0.7, 0.62, 0.62], tail: 0, dorsal: 0 },
   ribbon: { scale: [3.4, 0.2, 0.1], tail: 0, dorsal: 0 },
   catfish: { scale: [1.05, 0.56, 0.56], tail: 0.36, dorsal: 0.16 },
+  snakehead: { scale: [1.9, 0.5, 0.5], tail: 0.32, dorsal: 0.14 },
   carp: { scale: [1.05, 0.7, 0.5], tail: 0.4, dorsal: 0.34 },
   bass: { scale: [1.1, 0.64, 0.48], tail: 0.4, dorsal: 0.32 },
   whale: { scale: [2.3, 1.05, 1.0], tail: 0.85, dorsal: 0.4 },
 };
 
-/** 두툼하고 모서리가 둥근 지느러미 */
-function softFin(shape: THREE.Shape, mat: THREE.Material, depth = 0.05) {
-  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 5, curveSegments: 20 });
+/** 전설 물고기를 만드는 동안만 켜지는 고품질 표현(두께·곡률 있는 지느러미, 홍채 눈, 비늘 요철) */
+let HQ = false;
+
+let rayTex: THREE.CanvasTexture | null = null;
+/** 지느러미 살(뼈대)처럼 중심에서 퍼져 나가는 가는 줄무늬 */
+function rayMap() {
+  if (!rayTex) {
+    const c = document.createElement("canvas");
+    c.width = 128; c.height = 8;
+    const x = c.getContext("2d")!;
+    x.fillStyle = "#c8c8c8"; x.fillRect(0, 0, 128, 8);
+    for (let i = 0; i < 128; i += 8) {
+      const g = x.createLinearGradient(i, 0, i + 8, 0);
+      g.addColorStop(0, "#d8d8d8"); g.addColorStop(0.5, "#6a6a6a"); g.addColorStop(1, "#d8d8d8");
+      x.fillStyle = g; x.fillRect(i, 0, 8, 8);
+    }
+    rayTex = new THREE.CanvasTexture(c);
+    rayTex.wrapS = rayTex.wrapT = THREE.RepeatWrapping;
+  }
+  return rayTex;
+}
+
+let scaleTex: THREE.CanvasTexture | null = null;
+/** 비늘 한 장 한 장이 살짝 솟은 느낌을 주는 표면 요철 */
+export function scaleMap() {
+  if (!scaleTex) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const x = c.getContext("2d")!;
+    x.fillStyle = "#555"; x.fillRect(0, 0, 128, 128);
+    for (let row = 0; row < 8; row++) for (let col = -1; col < 8; col++) {
+      const cx = col * 16 + (row % 2 ? 8 : 0), cy = row * 16;
+      const g = x.createRadialGradient(cx, cy - 2, 1, cx, cy, 11);
+      g.addColorStop(0, "#fff"); g.addColorStop(0.7, "#aaa"); g.addColorStop(1, "#444");
+      x.fillStyle = g; x.beginPath(); x.arc(cx, cy, 11, 0, 7); x.fill();
+    }
+    scaleTex = new THREE.CanvasTexture(c);
+    scaleTex.wrapS = scaleTex.wrapT = THREE.RepeatWrapping;
+    scaleTex.repeat.set(5, 3);
+  }
+  return scaleTex;
+}
+
+/** 두툼하고 곡률이 있는 지느러미: 뿌리에서 끝으로 갈수록 밝아지고, 가장자리가 물결치며, 살 줄무늬가 퍼진다 */
+export function softFin(shape: THREE.Shape, mat: THREE.Material, depth = 0.05) {
+  if (!HQ) {
+    const g0 = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 5, curveSegments: 20 });
+    g0.translate(0, 0, -depth / 2);
+    const m0 = new THREE.Mesh(g0, mat);
+    m0.castShadow = true;
+    return m0;
+  }
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: 0.035, bevelSize: 0.03, bevelSegments: 6, curveSegments: 24 });
   geo.translate(0, 0, -depth / 2);
-  const m = new THREE.Mesh(geo, mat);
+  const pos = geo.attributes.position, uv = geo.attributes.uv;
+  let maxR = 1e-3;
+  for (let i = 0; i < pos.count; i++) maxR = Math.max(maxR, Math.hypot(pos.getX(i), pos.getY(i)));
+  const col = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i);
+    const r = Math.hypot(x, y), t = r / maxR, ang = Math.atan2(y, x);
+    // 부드럽게 말린 곡률과 가장자리의 잔물결
+    pos.setZ(i, pos.getZ(i) + 0.07 * maxR * t * t + 0.012 * maxR * t * Math.sin(ang * 14));
+    uv.setXY(i, ang * 4.5, t);
+    const shade = 0.72 + 0.4 * t;
+    col[i * 3] = shade; col[i * 3 + 1] = shade; col[i * 3 + 2] = shade;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  const fm = (mat as THREE.MeshPhysicalMaterial).clone();
+  fm.vertexColors = true;
+  fm.bumpMap = rayMap();
+  fm.bumpScale = 0.5;
+  const m = new THREE.Mesh(geo, fm);
   m.castShadow = true;
   return m;
 }
@@ -318,7 +417,7 @@ function softFin(shape: THREE.Shape, mat: THREE.Material, depth = 0.05) {
 type TailStyle = "fan" | "fork" | "crescent" | "round" | "ribbon";
 
 /** 꼬리 모양: 부채형, 갈라진 형, 초승달형, 둥근 노형, 가는 리본형 */
-function tailFin(len: number, mat: THREE.Material, style: TailStyle = "fan") {
+export function tailFin(len: number, mat: THREE.Material, style: TailStyle = "fan") {
   const sh = new THREE.Shape();
   if (style === "fork") {
     sh.moveTo(0.04, 0);
@@ -350,7 +449,7 @@ function tailFin(len: number, mat: THREE.Material, style: TailStyle = "fan") {
   return softFin(sh, mat);
 }
 
-function dorsalFin(w: number, h: number, mat: THREE.Material) {
+export function dorsalFin(w: number, h: number, mat: THREE.Material) {
   const sh = new THREE.Shape();
   sh.moveTo(0, 0);
   sh.bezierCurveTo(w * 0.05, h * 0.9, w * 0.4, h * 1.25, w * 0.7, h * 0.75);
@@ -359,7 +458,7 @@ function dorsalFin(w: number, h: number, mat: THREE.Material) {
   return softFin(sh, mat);
 }
 
-function sideFin(len: number, mat: THREE.Material) {
+export function sideFin(len: number, mat: THREE.Material) {
   const sh = new THREE.Shape();
   sh.moveTo(0, 0);
   sh.bezierCurveTo(-len * 0.2, len * 0.55, -len * 0.8, len * 0.6, -len, len * 0.15);
@@ -401,8 +500,30 @@ function bodyGeometry(sx: number, sy: number, sz: number, taper: number, bend: B
   return geo;
 }
 
+/** 몸 단면을 직접 정하는 몸통: maxAt에서 가장 굵고, 머리 쪽(pointed면 뾰족, 아니면 둥글게)과 꼬리 쪽으로 가늘어진다 */
+export function profileBody(sx: number, sy: number, sz: number, maxAt: number, pointed: boolean, tailExp: number) {
+  const geo = new THREE.SphereGeometry(0.5, 64, 44);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const t = pos.getX(i) + 0.5; // 0=꼬리 끝, 1=머리 끝
+    let r: number;
+    if (t >= maxAt) {
+      const u = (t - maxAt) / (1 - maxAt);
+      r = pointed ? Math.pow(Math.max(0, 1 - u), 0.85) * (1 - 0.15 * u * u) + 0.0 : Math.sqrt(Math.max(0, 1 - u * u));
+    } else {
+      r = Math.pow(Math.sin((t / maxAt) * Math.PI * 0.5), tailExp);
+    }
+    r = Math.max(0.05, r);
+    // 구의 단면 반지름(0.5*sqrt(1-4x²))으로 나눠 단위 원으로 만든 뒤, 원하는 굵기 r을 곱한다
+    const unit = Math.max(1e-3, 0.5 * Math.sqrt(Math.max(0, 1 - (pos.getX(i) * 2) ** 2)));
+    pos.setXYZ(i, pos.getX(i) * sx, (pos.getY(i) / unit) * 0.5 * sy * r, (pos.getZ(i) / unit) * 0.5 * sz * r);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
 /** 끝이 둥글게 가늘어지는 다리/수염 */
-function tube(points: THREE.Vector3[], radius: number, mat: THREE.Material, taper = 0.7) {
+export function tube(points: THREE.Vector3[], radius: number, mat: THREE.Material, taper = 0.7) {
   const curve = new THREE.CatmullRomCurve3(points);
   const segs = 20, radial = 12;
   const geo = new THREE.TubeGeometry(curve, segs, radius, radial, false);
@@ -431,21 +552,23 @@ const LEGEND_SCALE: Record<string, number> = {
 };
 const LEGEND_FEATS: Record<string, string[]> = { 용잉어: ["dragon"], 프로스트드래곤피쉬: ["dragon"] };
 
-type Anim = Array<(t: number) => void>;
+export type Anim = Array<(t: number) => void>;
 
 /** 몸을 감싸며 가장자리가 빛나는 후광 껍질 */
-function auraShell(geo: THREE.BufferGeometry, color: THREE.Color) {
+export function auraShell(geo: THREE.BufferGeometry, color: THREE.Color) {
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     uniforms: { uColor: { value: color } },
     vertexShader: "varying vec3 vN; varying vec3 vV; void main(){ vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
     fragmentShader: "uniform vec3 uColor; varying vec3 vN; varying vec3 vV; void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2); gl_FragColor = vec4(uColor * f * 0.9, f * 0.5); }",
   });
-  return new THREE.Mesh(geo, mat);
+  const shellMesh = new THREE.Mesh(geo, mat);
+  shellMesh.name = "fx";
+  return shellMesh;
 }
 
 /** 물결치듯 흔들리는 반투명 천 지느러미. 원점에서 -x 방향으로 펼쳐진다 */
-function veil(len: number, wid: number, color: THREE.Color, opacity: number, anim: Anim, phase = 0) {
+export function veil(len: number, wid: number, color: THREE.Color, opacity: number, anim: Anim, phase = 0) {
   const geo = new THREE.PlaneGeometry(len, wid, 30, 8);
   geo.translate(-len / 2, 0, 0);
   const base = Float32Array.from(geo.attributes.position.array as Float32Array);
@@ -464,13 +587,14 @@ function veil(len: number, wid: number, color: THREE.Color, opacity: number, ani
 }
 
 /** 얼음/수정 조각 (모서리를 둥글린 반투명 막대) */
-function crystal(h: number, r: number, color: THREE.Color, glowColor: THREE.Color) {
+export function crystal(h: number, r: number, color: THREE.Color, glowColor: THREE.Color) {
   const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, h, 3, 6), new THREE.MeshPhysicalMaterial({ color, roughness: 0.15, transmission: 0, transparent: true, opacity: 0.78, emissive: glowColor, emissiveIntensity: 0.55, clearcoat: 1 }));
   return m;
 }
 
-function sparkField(g: THREE.Group, anim: Anim, color: THREE.Color, count: number, rx: number, ry: number) {
+export function sparkField(g: THREE.Group, anim: Anim, color: THREE.Color, count: number, rx: number, ry: number) {
   const group = new THREE.Group();
+  group.name = "fx"; // 2D 그림을 찍을 때 빼는 꾸밈
   for (let i = 0; i < count; i++) {
     const s = new THREE.Mesh(new THREE.SphereGeometry(0.025 + (i % 4) * 0.012, 8, 6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
     s.userData.phase = (i / count) * Math.PI * 2;
@@ -490,6 +614,7 @@ function sparkField(g: THREE.Group, anim: Anim, color: THREE.Color, count: numbe
 /** 몸 둘레를 도는 빛나는 룬 고리 */
 function runeRing(g: THREE.Group, anim: Anim, color: THREE.Color, x: number, radius: number, speed: number, beads = 6) {
   const wrap = new THREE.Group();
+  wrap.name = "fx";
   wrap.position.x = x;
   const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.022, 8, 72), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
   ring.rotation.y = Math.PI / 2;
@@ -797,7 +922,30 @@ function buildRibbon(L: number, thick: number, skin: THREE.Material, finMat: THR
  * 3D 물고기. 길이 방향이 +x(머리)이고 몸길이는 대략 sx.
  * 둥글고 윤기 나는 몸, 종마다 다른 색과 무늬, 작은 검은 구슬 눈.
  */
+/** 귀여운 눈: 크고 동그란 윤기 나는 눈에 큰 반사광과 작은 반사광, 아래쪽에 은은한 색. side=+1이면 +z쪽을 본다 */
+export function makeEye(r: number, side: number, tint: THREE.Color, glowEye = false) {
+  const eye = new THREE.Group();
+  r *= 1.18;
+  const dark = new THREE.MeshPhysicalMaterial({ color: glowEye ? tint.clone().multiplyScalar(0.35) : 0x1c1424, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.03, emissive: glowEye ? tint : new THREE.Color(0), emissiveIntensity: glowEye ? 0.9 : 0 });
+  eye.add(new THREE.Mesh(new THREE.SphereGeometry(r, 24, 18), dark));
+  // 아래쪽에 비치는 은은한 색(눈이 촉촉해 보이게)
+  const rim = new THREE.Mesh(new THREE.SphereGeometry(r * 1.004, 20, 12, 0, Math.PI * 2, 0.9, 0.9), new THREE.MeshPhysicalMaterial({ color: tint.clone().lerp(new THREE.Color("#ffffff"), 0.3), roughness: 0.2, transparent: true, opacity: 0.55, depthWrite: false }));
+  rim.rotation.x = side * Math.PI / 2;
+  rim.rotation.z = Math.PI;
+  eye.add(rim);
+  const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const h1 = new THREE.Mesh(new THREE.SphereGeometry(r * 0.3, 12, 10), white);
+  h1.position.set(r * 0.3, r * 0.34, side * r * 0.82);
+  const h2 = new THREE.Mesh(new THREE.SphereGeometry(r * 0.13, 10, 8), white);
+  h2.position.set(-r * 0.28, -r * 0.3, side * r * 0.88);
+  eye.add(h1, h2);
+  return eye;
+}
+
 export function buildFish(sp: FishSpecies): THREE.Group {
+  HQ = sp.rarity === "legendary" || sp.rarity === "mythic"; // 전설·신화에만 고품질 표현을 쓴다
+  const custom = CUSTOM_MODELS[sp.name];
+  if (custom) return custom(sp);
   const g = new THREE.Group();
   const d = designOf(sp);
   const bodyKind = d.body ?? sp.body;
@@ -807,13 +955,18 @@ export function buildFish(sp: FishSpecies): THREE.Group {
   const glow = !!d.glow || sp.rarity === "legendary";
   const tex = paintTexture(sp, d);
   const skin = new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.18, emissive: glow ? accent : none, emissiveIntensity: glow ? 0.16 : 0 });
+  if (sp.rarity === "legendary" && !["octopus", "squid", "ribbon", "ray"].includes(bodyKind)) { skin.bumpMap = scaleMap(); skin.bumpScale = 0.22; } // 비늘 요철
   const finColor = base.clone().lerp(accent, bodyKind === "squid" || bodyKind === "octopus" ? 0.1 : 0.45);
   const finMat = new THREE.MeshPhysicalMaterial({ color: finColor, roughness: 0.35, clearcoat: 0.7, clearcoatRoughness: 0.25, side: THREE.DoubleSide, emissive: glow ? accent : none, emissiveIntensity: glow ? 0.2 : 0 });
   const legend = sp.rarity === "legendary";
   const k = d.scale ?? LEGEND_SCALE[sp.name] ?? 1;
   let [sx, sy, sz] = def.scale;
-  const has = (f: string) => d.features?.includes(f) || sp.features.includes(f) || LEGEND_FEATS[sp.name]?.includes(f);
+  // 이름으로 직접 디자인한 종은 그 특징만 쓴다(무작위로 배정된 뿔·혹이 숭어 등에 붙지 않게)
+  const designed = !!DESIGN[sp.name];
+  const has = (f: string) => d.features?.includes(f) || (!designed && sp.features.includes(f)) || LEGEND_FEATS[sp.name]?.includes(f);
   const feat = new THREE.Group();
+  const realShark = bodyKind === "shark" && sp.name.includes("상어") && !sp.name.includes("철갑");
+  const sturgeon = bodyKind === "shark" && sp.name.includes("철갑상어");
   const anim: Anim = [];
   let bendUsed: Bend = noBend;
   let ribbonInfo: RibbonInfo | null = null;
@@ -823,7 +976,13 @@ export function buildFish(sp: FishSpecies): THREE.Group {
   if (has("curvy")) { sx *= 1.2; sy *= 0.8; sz *= 0.8; }
 
   const bead = (r: number, x: number, y: number, z: number) => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), new THREE.MeshPhysicalMaterial({ color: 0x120d18, roughness: 0.1, clearcoat: 1, clearcoatRoughness: 0.05, emissive: legend ? accent : none, emissiveIntensity: legend ? 1.1 : 0 }));
+    if (legend) {
+      const eye = makeEye(r, Math.sign(z || 1), accent, true);
+      eye.position.set(x, y, z);
+      g.add(eye);
+      return;
+    }
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), new THREE.MeshPhysicalMaterial({ color: 0x120d18, roughness: 0.1, clearcoat: 1, clearcoatRoughness: 0.05 }));
     eye.position.set(x, y, z);
     const shine = new THREE.Mesh(new THREE.SphereGeometry(r * 0.3, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
     shine.position.set(r * 0.35, r * 0.4, Math.sign(z || 1) * r * 0.7);
@@ -836,9 +995,32 @@ export function buildFish(sp: FishSpecies): THREE.Group {
     head.scale.set(sx * 1.05, sy * 1.2, sz * 1.05);
     head.position.set(-0.05, 0.25, 0);
     g.add(head);
-    for (const s of [-1, 1]) bead(0.07, 0.3, 0.1, s * 0.32);
-    const armN = legend ? 12 : 8;
-    const L = legend ? 1.7 : 1;
+    const kraken = sp.name === "크라켄";
+    if (kraken) {
+      // 크라켄: 뒤로 길게 솟은 머리에 가시 볏, 크고 빛나는 눈, 곤봉 끝 두 개의 긴 촉수
+      head.scale.set(sx * 0.95, sy * 2.0, sz * 1.0);
+      head.position.set(-0.1, 0.45, 0);
+      const ax = 0.5 * sx * 0.95, ay = 0.5 * sy * 2.0;
+      const spikeMat = new THREE.MeshPhysicalMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.8, roughness: 0.3 });
+      for (let i = 0; i < 6; i++) {
+        const phi = (60 + i * 18) * (Math.PI / 180);
+        const n = new THREE.Vector3(Math.cos(phi) / ax, Math.sin(phi) / ay, 0).normalize();
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07 - i * 0.004, 0.32 - i * 0.02, 10), spikeMat);
+        spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
+        spike.position.set(-0.1 + ax * Math.cos(phi) * 1.02, 0.45 + ay * Math.sin(phi) * 1.02, 0);
+        g.add(spike);
+      }
+      for (const s of [-1, 1]) {
+        g.add(tube([new THREE.Vector3(0.25, 0.1, s * 0.12), new THREE.Vector3(0.7, 0.35, s * 0.4), new THREE.Vector3(1.3, 0.1, s * 0.85), new THREE.Vector3(2.1, 0.45, s * 1.05)], 0.05, skin, 0.35));
+        const club = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 10), skin);
+        club.scale.set(1.5, 0.8, 0.8);
+        club.position.set(2.1, 0.45, s * 1.05);
+        g.add(club);
+      }
+    }
+    for (const s of [-1, 1]) bead(kraken ? 0.12 : 0.07, 0.3, kraken ? 0.2 : 0.1, s * (kraken ? 0.34 : 0.32));
+    const armN = kraken ? 8 : legend ? 8 : 8;
+    const L = kraken ? 1.9 : legend ? 1.25 : 1;
     const suck = new THREE.MeshBasicMaterial({ color: accent });
     for (let i = 0; i < armN; i++) {
       const a = (i / armN) * Math.PI * 2;
@@ -856,17 +1038,14 @@ export function buildFish(sp: FishSpecies): THREE.Group {
       }
     }
   } else if (bodyKind === "squid") {
-    const mantle = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 24), skin);
-    mantle.scale.set(sx * 0.72, sy * 1.0, sz * 1.0);
-    mantle.position.x = -0.12;
+    // 오징어: 뒤로 뾰족하게 빠지는 원뿔 몸통(외투막)과 뒤쪽 마름모 지느러미
+    const mantle = new THREE.Mesh(profileBody(sx * 1.5, sy * 1.05, sz * 1.05, 0.62, false, 0.75), skin);
+    mantle.scale.x = 1;
+    mantle.position.x = -0.18;
     g.add(mantle);
-    const cone = new THREE.Mesh(new THREE.SphereGeometry(0.25, 20, 14), skin);
-    cone.scale.set(1.5, 0.9, 0.9);
-    cone.position.set(-0.52, 0, 0);
-    g.add(cone);
     for (const s of [-1, 1]) {
-      const f = sideFin(0.32, finMat);
-      f.position.set(-0.4, 0, s * 0.2);
+      const f = sideFin(0.42, finMat);
+      f.position.set(-0.62, 0, s * 0.1);
       f.rotation.set(s * 1.3, 0, 0);
       g.add(f);
       bead(0.06, 0.28, 0.02, s * 0.28);
@@ -925,18 +1104,200 @@ export function buildFish(sp: FishSpecies): THREE.Group {
     tf.rotation.x = Math.PI / 2;
     tail.add(tf);
     g.add(tail);
+  } else if (realShark) {
+    // 진짜 상어: 어뢰 모양 몸, 뾰족한 주둥이, 뒤로 젖혀진 큰 등지느러미, 위 날개가 긴 꼬리, 아가미 줄
+    sx *= 1.15; sy *= 0.9;
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1a1420, roughness: 0.6 });
+    // 몸통 자체가 코끝으로 매끄럽게 좁아진다(따로 붙인 뿔이 아니다)
+    const body = new THREE.Mesh(profileBody(sx, sy * 1.15, sz * 1.1, 0.55, true, 0.8), skin);
+    body.castShadow = true;
+    g.add(body);
+    for (const s of [-1, 1]) bead(Math.max(0.045, sy * 0.07), sx * 0.34, sy * 0.1, s * sz * 0.36);
+    headPos = new THREE.Vector3(sx * 0.45, 0, 0);
+    const fin = (w: number, h: number) => {
+      const sh = new THREE.Shape();
+      sh.moveTo(0, 0);
+      sh.bezierCurveTo(w * 0.3, h * 0.55, w * 0.55, h * 0.95, w * 0.75, h);
+      sh.bezierCurveTo(w * 0.8, h * 0.6, w * 0.9, h * 0.25, w, 0);
+      sh.closePath();
+      return softFin(sh, finMat);
+    };
+    const df = fin(sx * 0.26, sy * 0.85);
+    df.scale.x = -1; // 앞쪽 밑동에서 뒤로 젖혀진다
+    df.position.set(sx * 0.12, sy * 0.4, 0);
+    g.add(df);
+    const d2 = fin(sx * 0.1, sy * 0.3);
+    d2.scale.x = -1;
+    d2.position.set(-sx * 0.28, sy * 0.3, 0);
+    g.add(d2);
+    const anal = fin(sx * 0.1, sy * 0.3);
+    anal.scale.set(-1, -1, 1);
+    anal.position.set(-sx * 0.3, -sy * 0.32, 0);
+    g.add(anal);
+    for (const s of [-1, 1]) {
+      const pf = sideFin(sx * 0.32, finMat);
+      pf.position.set(sx * 0.16, -sy * 0.2, s * sz * 0.4);
+      pf.rotation.set(s * 1.05, 0.15, -0.35);
+      g.add(pf);
+      for (let i = 0; i < 5; i++) {
+        const slit = new THREE.Mesh(new THREE.BoxGeometry(0.014, sy * 0.3, 0.014), dark);
+        slit.position.set(sx * (0.27 - i * 0.03), 0, s * sz * 0.46);
+        slit.rotation.x = s * 0.15;
+        g.add(slit);
+      }
+    }
+    // 무서운 입: 살짝 벌어진 아래턱과 위아래 줄줄이 난 이빨
+    const white = new THREE.MeshStandardMaterial({ color: 0xfff8f0, roughness: 0.25 });
+    const gape = new THREE.Mesh(new THREE.SphereGeometry(0.5, 20, 14), new THREE.MeshStandardMaterial({ color: 0x4a1020, roughness: 0.5 }));
+    gape.scale.set(sx * 0.3, sy * 0.2, sz * 0.5);
+    gape.position.set(sx * 0.3, -sy * 0.36, 0);
+    g.add(gape);
+    const jaw = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 14), skin);
+    jaw.scale.set(sx * 0.32, sy * 0.16, sz * 0.52);
+    jaw.position.set(sx * 0.27, -sy * 0.55, 0);
+    jaw.rotation.z = -0.22;
+    g.add(jaw);
+    for (let i = 0; i < 13; i++) {
+      const th = ((i / 12) * 2 - 1) * 1.25;
+      const ux = sx * 0.2 + sx * 0.25 * Math.cos(th), uz = sz * 0.3 * Math.sin(th);
+      const up = new THREE.Mesh(new THREE.ConeGeometry(0.022, sy * 0.2, 6), white); // 위 이빨은 아래로
+      up.rotation.z = Math.PI;
+      up.position.set(ux, -sy * 0.34, uz);
+      g.add(up);
+      const low = new THREE.Mesh(new THREE.ConeGeometry(0.02, sy * 0.17, 6), white); // 아래 이빨은 위로
+      low.position.set(sx * 0.17 + sx * 0.25 * Math.cos(th) * 0.95, -sy * 0.48, uz * 0.95);
+      g.add(low);
+    }
+    // 매서운 눈썹
+    for (const s of [-1, 1]) {
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(sx * 0.1, 0.02, 0.035), new THREE.MeshStandardMaterial({ color: 0x141018 }));
+      brow.position.set(sx * 0.34, sy * 0.24, s * sz * 0.36);
+      brow.rotation.z = -0.45;
+      brow.rotation.y = s * 0.3;
+      g.add(brow);
+    }
+    const tail = new THREE.Group();
+    tail.name = "tail";
+    tail.position.set(-sx * 0.47, 0, 0);
+    tail.rotation.z = 0.12;
+    const L = sx * 0.3;
+    const ts = new THREE.Shape();
+    ts.moveTo(0.04, 0);
+    ts.bezierCurveTo(-L * 0.2, L * 0.35, -L * 0.6, L * 1.1, -L * 1.1, L * 1.3);
+    ts.bezierCurveTo(-L * 1.0, L * 0.7, -L * 0.75, L * 0.25, -L * 0.7, 0);
+    ts.bezierCurveTo(-L * 0.85, -L * 0.2, -L * 0.9, -L * 0.45, -L * 0.75, -L * 0.55);
+    ts.bezierCurveTo(-L * 0.4, -L * 0.35, -L * 0.15, -L * 0.15, 0.04, 0);
+    tail.add(softFin(ts, finMat));
+    g.add(tail);
+  } else if (sturgeon) {
+    // 철갑상어: 길쭉한 몸, 뾰족하고 긴 주둥이, 몸을 따라 줄지은 뼈 방패 판, 입 앞 수염, 위 날개가 긴 꼬리
+    sx *= 1.35; sy *= 0.78; sz *= 0.9;
+    const body = new THREE.Mesh(profileBody(sx, sy, sz, 0.5, true, 0.8), skin);
+    body.castShadow = true;
+    g.add(body);
+    headPos = new THREE.Vector3(sx * 0.45, 0, 0);
+    const plate = new THREE.MeshPhysicalMaterial({ color: base.clone().lerp(new THREE.Color("#ffffff"), 0.45), roughness: 0.35, clearcoat: 0.8, emissive: glow ? accent : none, emissiveIntensity: glow ? 0.25 : 0 });
+    const rAt = (t: number) => (t >= 0.5 ? Math.pow(Math.max(0, 1 - (t - 0.5) / 0.5), 0.85) : Math.pow(Math.sin((t / 0.5) * Math.PI * 0.5), 0.8));
+    for (let i = 0; i < 11; i++) {
+      const t = 0.12 + i * 0.062; // 꼬리 쪽 0.12 ~ 머리 쪽 0.74
+      const x = (t - 0.5) * sx, r = rAt(t) * 0.5;
+      for (const [ang, row] of [[Math.PI / 2, 0], [0.62, 1], [-0.1, 2]] as const) {
+        const sides = row === 0 ? [0] : [-1, 1];
+        for (const sd of sides) {
+          const sc = new THREE.Mesh(new THREE.SphereGeometry(0.05 + 0.02 * r, 10, 8), plate);
+          sc.scale.set(1.5, 0.7, 1);
+          sc.position.set(x, Math.sin(ang) * sy * r * 1.02, row === 0 ? 0 : sd * Math.cos(ang) * sz * r * 1.02);
+          sc.rotation.z = row === 0 ? 0 : 0;
+          g.add(sc);
+        }
+      }
+    }
+    for (const sd of [-1, 1]) {
+      bead(Math.max(0.035, sy * 0.06), sx * 0.3, sy * 0.1, sd * sz * 0.2);
+      for (let i = 0; i < 2; i++) g.add(tube([new THREE.Vector3(sx * 0.3, -sy * 0.16, sd * (0.02 + i * 0.04)), new THREE.Vector3(sx * 0.32, -sy * 0.3, sd * (0.04 + i * 0.06)), new THREE.Vector3(sx * 0.29, -sy * 0.38, sd * (0.03 + i * 0.06))], 0.016, skin, 0.4));
+      const pf = sideFin(sx * 0.22, finMat);
+      pf.position.set(sx * 0.2, -sy * 0.2, sd * sz * 0.4);
+      pf.rotation.set(sd * 1.05, 0.15, -0.35);
+      g.add(pf);
+    }
+    const dfin = dorsalFin(sx * 0.16, sy * 0.6, finMat);
+    dfin.position.set(-sx * 0.3, sy * 0.4, 0);
+    g.add(dfin);
+    const afin = dorsalFin(sx * 0.12, sy * 0.4, finMat);
+    afin.scale.y = -1;
+    afin.position.set(-sx * 0.28, -sy * 0.38, 0);
+    g.add(afin);
+    const tail = new THREE.Group();
+    tail.name = "tail";
+    tail.position.set(-sx * 0.47, 0, 0);
+    tail.rotation.z = 0.15;
+    const L = sx * 0.28;
+    const ts = new THREE.Shape();
+    ts.moveTo(0.04, 0);
+    ts.bezierCurveTo(-L * 0.2, L * 0.35, -L * 0.6, L * 1.1, -L * 1.1, L * 1.3);
+    ts.bezierCurveTo(-L * 1.0, L * 0.7, -L * 0.75, L * 0.25, -L * 0.7, 0);
+    ts.bezierCurveTo(-L * 0.85, -L * 0.2, -L * 0.9, -L * 0.45, -L * 0.75, -L * 0.55);
+    ts.bezierCurveTo(-L * 0.4, -L * 0.35, -L * 0.15, -L * 0.15, 0.04, 0);
+    tail.add(softFin(ts, finMat));
+    g.add(tail);
+  } else if (bodyKind === "whale") {
+    // 고래: 크고 뭉툭한 머리, 머리 위 숨구멍, 입선, 긴 가슴지느러미, 위아래로 흔드는 가로 꼬리
+    sx *= 1.3; // 고래는 더 길쭉하게
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1a1420, roughness: 0.6 });
+    const light = base.clone().lerp(new THREE.Color("#ffffff"), 0.7);
+    const body = new THREE.Mesh(profileBody(sx, sy * 1.1, sz * 1.0, 0.6, false, 0.7), skin);
+    body.castShadow = true;
+    g.add(body);
+    headPos = new THREE.Vector3(sx * 0.45, 0, 0);
+    for (const s of [-1, 1]) {
+      bead(0.06, sx * 0.3, -sy * 0.02, s * sz * 0.45);
+      // 입선: 주둥이 끝에서 눈 아래까지 굽은 선
+      g.add(tube([new THREE.Vector3(sx * 0.47, -sy * 0.12, s * sz * 0.1), new THREE.Vector3(sx * 0.36, -sy * 0.16, s * sz * 0.38), new THREE.Vector3(sx * 0.2, -sy * 0.1, s * sz * 0.47)], 0.016, dark, 0.2));
+      const pf = sideFin(sx * 0.34, finMat);
+      pf.position.set(sx * 0.1, -sy * 0.26, s * sz * 0.44);
+      pf.rotation.set(s * 1.15, 0.25, -0.5);
+      g.add(pf);
+    }
+    const blow = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), dark);
+    blow.scale.set(1.6, 0.5, 1);
+    blow.position.set(sx * 0.22, sy * 0.5, 0);
+    g.add(blow);
+    // 배의 주름
+    for (let i = -3; i <= 3; i++) {
+      g.add(tube([new THREE.Vector3(sx * 0.4, -sy * 0.4, i * sz * 0.1), new THREE.Vector3(sx * 0.1, -sy * 0.46, i * sz * 0.1), new THREE.Vector3(-sx * 0.12, -sy * 0.4, i * sz * 0.08)], 0.012, new THREE.MeshStandardMaterial({ color: light, roughness: 0.5 }), 0.3));
+    }
+    const dorsal = dorsalFin(sx * 0.14, sy * 0.28, finMat);
+    dorsal.position.set(-sx * 0.2, sy * 0.46, 0);
+    g.add(dorsal);
+    const tail = new THREE.Group();
+    tail.name = "whaleTail";
+    tail.position.set(-sx * 0.5, 0, 0);
+    const flukes = tailFin(sx * 0.36, finMat, "crescent");
+    flukes.rotation.x = Math.PI / 3; // 옆에서도 보이게 비스듬히 세운 꼬리
+    tail.add(flukes);
+    g.add(tail);
+    anim.push((t) => { tail.rotation.z = Math.sin(t * 2.2) * 0.2; });
   } else {
     const round = bodyKind === "puffer" || bodyKind === "round";
     // 가늘고 긴 물고기는 S자로 휘어서 더 커 보이게 한다
     const total = has("dragon") ? 1.9 : bodyKind === "eel" ? 1.3 : has("curvy") ? 1.2 : 0; // 몸 전체가 휘는 각도(라디안)
     const bend: Bend = total ? arcBend(total / sx) : noBend;
     const at = (x: number, y: number, z: number) => bend.map(x, y, z);
-    const body = new THREE.Mesh(bodyGeometry(sx, sy, sz, round ? 0.5 : 0.12, bend), skin);
+    // 종류마다 몸 단면을 다르게: 날씬한 어뢰형(고등어·참치), 높은 몸(붕어·배스), 머리가 큰 메기형
+    const prof: Record<string, [number, number]> = { slim: [0.4, 0.85], bass: [0.45, 0.8], carp: [0.45, 0.75], catfish: [0.6, 0.6], snakehead: [0.55, 0.65] };
+    // 빠르게 헤엄치는 날씬한 종류(고등어·참치·방어·연어·송어 등)는 어뢰형 몸에 두 개의 등지느러미를 단다
+    const FAST = ["참치", "고등어", "삼치", "전갱이", "방어", "부시리"];
+    const tor = !total && !legend && !round && (bodyKind === "slim" || FAST.includes(sp.name));
+    if (sp.name === "참치") { sy *= 1.25; sz *= 1.1; }
+    if (tor) sx *= 1.2;
+    if (bodyKind === "carp") sy *= 1.15;
+    const pp = tor ? ([0.4, 0.85] as [number, number]) : !total && !round ? prof[bodyKind] : undefined;
+    const body = new THREE.Mesh(pp ? profileBody(sx, sy * 1.08, sz * 1.08, pp[0], false, pp[1]) : bodyGeometry(sx, sy, sz, round ? 0.5 : 0.12, bend), skin);
     body.castShadow = true;
     g.add(body);
     for (const s of [-1, 1]) {
       const e = at(sx * 0.32, sy * 0.12, s * sz * 0.42);
-      bead(Math.max(0.05, sy * 0.13), e.x, e.y, e.z);
+      bead(Math.max(0.04, sy * (pp ? 0.085 : bodyKind === "puffer" ? 0.11 : 0.1)), e.x, e.y, e.z);
     }
     const hp = at(sx * 0.45, 0, 0);
     bendUsed = bend;
@@ -947,15 +1308,40 @@ export function buildFish(sp: FishSpecies): THREE.Group {
     tail.name = "tail";
     tail.position.copy(at(-sx * 0.47, 0, 0));
     tail.rotation.z = bend.ang(-sx * 0.47);
-    const tstyle: TailStyle = has("bigtail") ? "ribbon" : bodyKind === "eel" ? (total ? "fork" : "ribbon") : bodyKind === "slim" ? "fork" : bodyKind === "shark" || bodyKind === "whale" ? "crescent" : bodyKind === "round" || bodyKind === "puffer" || bodyKind === "catfish" ? "round" : "fan";
+    const tstyle: TailStyle = has("bigtail") ? "ribbon" : tor && (FAST.includes(sp.name) || has("bill")) ? "crescent" : bodyKind === "eel" ? (total ? "fork" : "ribbon") : bodyKind === "slim" ? "fork" : bodyKind === "shark" || bodyKind === "whale" ? "crescent" : bodyKind === "round" || bodyKind === "puffer" || bodyKind === "catfish" || bodyKind === "snakehead" ? "round" : "fan";
     tail.add(tailFin(Math.max(0.22, def.tail * (has("bigtail") ? 1.9 : total ? 1.5 : 1.1)), finMat, tstyle));
     g.add(tail);
     if (def.dorsal > 0) {
-      const long = (bodyKind === "eel" || bodyKind === "catfish") && !total;
-      const df = dorsalFin(sx * (long ? 0.85 : 0.5), def.dorsal * (long ? 0.7 : 1.1), finMat);
-      df.position.copy(at(-sx * (long ? 0.45 : 0.28), sy * 0.44, 0));
+      const long = (bodyKind === "eel" || bodyKind === "snakehead") && !total;
+      const spiny = bodyKind === "bass" && !tor && !total;
+      const mkD = (w: number, h: number) => { const f = dorsalFin(w, h, finMat); f.userData.w = w; return f; };
+      const df = tor ? mkD(sx * 0.24, def.dorsal * 1.5)
+        : bodyKind === "catfish" && !total ? mkD(sx * 0.18, def.dorsal * 1.1) // 메기: 작은 등지느러미
+        : spiny ? mkD(sx * 0.34, def.dorsal * 1.35) // 농어류: 가시가 선 앞 등지느러미
+        : bodyKind === "carp" && !total ? mkD(sx * 0.62, def.dorsal * 0.9) // 잉어류: 길게 이어진 등지느러미
+        : mkD(sx * (long ? 0.85 : 0.5), def.dorsal * (long ? 0.7 : 1.1));
+      df.position.copy(at(tor ? -sx * 0.02 : bodyKind === "catfish" && !total ? sx * 0.05 : spiny ? sx * 0.06 : bodyKind === "carp" && !total ? -sx * 0.08 : -sx * (long ? 0.45 : 0.28), sy * 0.44, 0));
       df.rotation.z = bend.ang(-sx * (long ? 0.45 : 0.28));
       g.add(df);
+      if (spiny) {
+        const soft = dorsalFin(sx * 0.2, def.dorsal * 0.8, finMat);
+        soft.position.set(-sx * 0.22, sy * 0.4, 0);
+        g.add(soft);
+      }
+      if (tor) {
+        // 작은 둘째 등지느러미, 꼬리 쪽 작은 지느러미 조각(고속 어종만)
+        const d2 = dorsalFin(sx * 0.12, def.dorsal * 0.55, finMat);
+        d2.position.set(-sx * 0.27, sy * 0.3, 0);
+        g.add(d2);
+        if (FAST.includes(sp.name)) {
+          for (let i = 0; i < 5; i++) for (const up of [1, -1]) {
+            const fl = dorsalFin(sx * 0.035, sy * 0.13, finMat);
+            fl.position.set(-sx * (0.3 + i * 0.035), up * sy * (0.2 - i * 0.012), 0);
+            fl.scale.y = up;
+            g.add(fl);
+          }
+        }
+      }
       if (bodyKind === "shark" || bodyKind === "whale") {
         const d2 = dorsalFin(sx * 0.18, def.dorsal * 0.45, finMat);
         d2.position.copy(at(-sx * 0.42, sy * 0.28, 0));
@@ -963,8 +1349,9 @@ export function buildFish(sp: FishSpecies): THREE.Group {
         g.add(d2);
       }
     }
-    const anal = dorsalFin(sx * (total ? 0.1 : 0.2), def.dorsal * (total ? 0.25 : 0.4), finMat);
-    anal.position.copy(at(-sx * 0.3, -sy * 0.4, 0));
+    const longAnal = !total && (bodyKind === "catfish" || bodyKind === "snakehead");
+    const anal = dorsalFin(sx * (total ? 0.1 : longAnal ? 0.5 : 0.2), def.dorsal * (total ? 0.25 : longAnal ? 0.45 : 0.4), finMat);
+    anal.position.copy(at(longAnal ? -sx * 0.45 : -sx * 0.3, -sy * 0.4, 0));
     anal.rotation.z = bend.ang(-sx * 0.3);
     anal.scale.y = -1;
     g.add(anal);
@@ -990,10 +1377,10 @@ export function buildFish(sp: FishSpecies): THREE.Group {
   }
 
   // 종의 특징 파츠 (전부 둥글게)
-  if (!["octopus", "squid", "ray", "flat", "ribbon"].includes(bodyKind)) {
+  if (!["octopus", "squid", "ray", "flat", "ribbon", "whale"].includes(bodyKind) && !realShark && !sturgeon) {
     if (has("whiskers") || bodyKind === "catfish") {
       for (const s of [-1, 1]) for (let i = 0; i < 2; i++) {
-        feat.add(tube([new THREE.Vector3(sx * 0.5, -sy * 0.12, s * (0.05 + i * 0.04)), new THREE.Vector3(sx * 0.62, -sy * 0.2 - i * 0.04, s * (0.14 + i * 0.1)), new THREE.Vector3(sx * 0.6, -sy * 0.42 - i * 0.05, s * (0.2 + i * 0.12))], 0.026, skin, 0.5));
+        { const w = bodyKind === "catfish" ? 1.9 : 1; feat.add(tube([new THREE.Vector3(sx * 0.5, -sy * 0.12, s * (0.05 + i * 0.04)), new THREE.Vector3(sx * (0.5 + 0.12 * w), -sy * 0.2 - i * 0.04, s * (0.14 + i * 0.1) * w), new THREE.Vector3(sx * (0.5 + 0.1 * w), -sy * 0.42 * w - i * 0.05, s * (0.2 + i * 0.12) * w)], 0.026, skin, 0.5)); }
       }
     }
     if (has("chinbarbel")) feat.add(tube([new THREE.Vector3(sx * 0.46, -sy * 0.3, 0), new THREE.Vector3(sx * 0.5, -sy * 0.48, 0)], 0.03, skin, 0.4));
@@ -1060,6 +1447,21 @@ export function buildFish(sp: FishSpecies): THREE.Group {
     }
   };
   return g;
+}
+
+/** 물고기 몸의 크기(후광·빛 줄기·입자 같은 꾸밈은 빼고 잰다) */
+export function bodyBox(obj: THREE.Object3D): THREE.Box3 {
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  obj.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || (o as THREE.Sprite).isSprite) return;
+    const mat = m.material as THREE.Material;
+    if (mat.type === "ShaderMaterial" || mat.blending === THREE.AdditiveBlending || (mat as THREE.MeshBasicMaterial).type === "MeshBasicMaterial") return;
+    if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+    box.union(m.geometry.boundingBox!.clone().applyMatrix4(m.matrixWorld));
+  });
+  return box.isEmpty() ? new THREE.Box3().setFromObject(obj) : box;
 }
 
 /** 물속에서 희미하게 보이는 실루엣용 재질로 바꾼다 */

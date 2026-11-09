@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Room } from "colyseus.js";
-import { BAITS, BASE_MAPS, CODEX_REWARDS, CYCLE_MS, DAY_MS, EMOTES, MAX_PLAYERS, RECONNECT_SECONDS, cursorAt, rodLevelOf, speciesById } from "@fishing/shared";
-import type { MapId, PlayerProfile, Rarity } from "@fishing/shared";
+import { BAITS, BASE_MAPS, CODEX_REWARDS, CYCLE_MS, DAY_MS, EMOTES, MAX_PLAYERS, RECONNECT_SECONDS, cursorAt, inFrenzy, rodLevelOf, speciesById, tugDecay, tugPull } from "@fishing/shared";
+import type { MapId, PlayerProfile, Rarity, TugParams } from "@fishing/shared";
 import type { Joined } from "../App";
 import { sfx, startBgm, stopBgm } from "../audio";
 import { colyseus, inviteLink } from "../net";
@@ -63,10 +63,13 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
   const [rankTab, setRankTab] = useState<"value" | "count" | "biggest">("value");
   const [rankOpen, setRankOpen] = useState(() => window.innerWidth > 720); // 좁은 화면에서는 접어 둔다
   const [toast, setToast] = useState("");
+  const [flash, setFlash] = useState(0);
   const [announce, setAnnounce] = useState<{ text: string; rarity: Rarity } | null>(null);
   const [power, setPower] = useState(0);
   const [phase, setPhase] = useState("idle");
   const [mini, setMini] = useState<{ target: number; zoneWidth: number; speed: number; timeoutMs: number; startedAt: number } | null>(null);
+  const [tug, setTug] = useState<(TugParams & { startedAt: number }) | null>(null);
+  const bumpRef = useRef<(() => void) | null>(null);
   const [result, setResult] = useState<any>(null);
   const [text, setText] = useState("");
   const [players, setPlayers] = useState(1);
@@ -99,6 +102,7 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
       setBaitCounts((c) => (m.id ? { ...c, [m.id]: m.left } : m.out ? { ...c, [m.out]: 0 } : c));
     });
     on("toast", (t) => { setToast(t); setTimeout(() => setToast(""), 2200); sfx.fail(); });
+    on("flash", () => { setFlash((n) => n + 1); setTimeout(() => setFlash(0), 1600); });
     on("announce", (m) => {
       setAnnounce({ text: `${m.name}님이 ${RARITY_LABEL[m.rarity as Rarity]} ${m.speciesName}을(를) 낚았어요! (${m.size}cm)`, rarity: m.rarity });
       setTimeout(() => setAnnounce(null), 4500);
@@ -108,12 +112,15 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
     on("phase", (p) => {
       setPhase(p);
       if (p === "waiting") { sfx.cast(); setTimeout(() => sfx.splash(), 350); }
-      if (p === "idle") setMini(null);
+      if (p === "idle") { setMini(null); setTug(null); }
     });
     on("bite", () => sfx.bite());
     on("minigame", (m) => { setMini(m); sfx.reel(); });
+    on("tug", (m) => { setMini(null); setTug(m); });
+    on("pulled", () => bumpRef.current?.());
     on("result", (m) => {
       setMini(null);
+      setTug(null);
       setResult(m);
       if (m.success) sfx.success(speciesById(m.catch.speciesId)?.rarity ?? "common");
       else sfx.fail();
@@ -266,8 +273,9 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
           {isHost && <span className="chip" style={{ fontSize: 13 }}>👑 내가 방장이에요</span>}
         </div>
 
+        {flash > 0 && <div className="mythic-flash" key={flash} />}
         {announce && (
-          <div className="announce panel" style={{ borderColor: RARITY_COLOR[announce.rarity] }}>🎉 {announce.text}</div>
+          <div className={`announce panel ${announce.rarity}`} style={{ borderColor: RARITY_COLOR[announce.rarity] }}>{announce.rarity === "mythic" ? "🌈✨" : "🎉"} {announce.text}</div>
         )}
         {toast && <div className="toast">{toast}</div>}
 
@@ -294,6 +302,7 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
           <div className="bite"><div className="bang">!</div><p>지금 클릭!</p></div>
         )}
         {mini && <Minigame mini={mini} />}
+        {tug && <Tug tug={tug} bumpRef={bumpRef} onPull={() => sceneRef.current?.actionDown()} />}
         {!result && <div className="hint-bar">{hint}</div>}
         {npcNear && !panel && (
           <button className="btn sun npc-talk" onClick={() => { sfx.click(); setPanel("npc"); }}>🧑‍🌾 상인 아저씨와 이야기하기 {isTouch ? "" : "(E)"}</button>
@@ -354,6 +363,46 @@ function Minigame({ mini }: { mini: { target: number; zoneWidth: number; speed: 
         <div className="cursor" ref={cursor} />
       </div>
       <div className="time"><i ref={bar as any} /></div>
+    </div>
+  );
+}
+
+/** 힘겨루기: 서버와 같은 계산으로 게이지를 보여 준다(판정은 서버가 한다) */
+function Tug({ tug, onPull, bumpRef }: { tug: TugParams & { startedAt: number }; onPull: () => void; bumpRef: React.MutableRefObject<(() => void) | null> }) {
+  const fill = useRef<HTMLDivElement>(null);
+  const label = useRef<HTMLDivElement>(null);
+  const state = useRef({ g: tug.start, at: 0 });
+  useEffect(() => {
+    state.current = { g: tug.start, at: 0 };
+    let raf = 0;
+    const loop = () => {
+      const t = performance.now() - tug.startedAt;
+      const s = state.current;
+      s.g = tugDecay(tug, s.g, s.at, t);
+      s.at = t;
+      if (fill.current) fill.current.style.width = `${Math.max(0, Math.min(1, s.g)) * 100}%`;
+      if (label.current) label.current.textContent = inFrenzy(tug, t) ? "⚠️ 날뛰는 중! 누르지 말고 버텨요!" : isTouch ? "버튼을 마구 눌러요!" : "E 또는 스페이스를 연타해요!";
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+    return () => cancelAnimationFrame(raf);
+  }, [tug]);
+  // 키·마우스·버튼 어느 쪽으로 눌러도 GameScene이 서버로 보내고 "pulled"를 알려 주면 여기서 게이지 표시를 올린다
+  useEffect(() => {
+    bumpRef.current = () => {
+      const s = state.current;
+      const t = performance.now() - tug.startedAt;
+      s.g = tugPull(tug, tugDecay(tug, s.g, s.at, t), t);
+      s.at = t;
+      sfx.click();
+    };
+    return () => { bumpRef.current = null; };
+  }, [tug, bumpRef]);
+  return (
+    <div className="mini panel tug">
+      <div ref={label} style={{ fontSize: 22 }} />
+      <div className="track"><div className="tugfill" ref={fill} /></div>
+      {isTouch && <button className="btn sun tugbtn" onPointerDown={(e) => { e.preventDefault(); onPull(); }}>당겨!</button>}
     </div>
   );
 }

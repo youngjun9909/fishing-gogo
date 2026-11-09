@@ -1,8 +1,8 @@
 import type { FishSpecies, MapId, Rarity, Reach, TimeOfDay } from "./types";
 
-// 한 줄 형식: "이름:등급:체형:시간대:위치"
+// 한 줄 형식: "이름:등급:체형:시간대:위치[:나오는 맵(여럿이면 +)]" — 마지막 칸을 쓰면 그 목록의 기본 맵 대신 그 맵에서만 나온다
 // 등급 c=일반 r=희귀 v=매우 희귀 l=전설 / 시간대 d=낮 n=밤 a=상관없음 / 위치 n=가까이 f=멀리 a=상관없음
-const RARITY: Record<string, Rarity> = { c: "common", r: "rare", v: "veryRare", l: "legendary" };
+const RARITY: Record<string, Rarity> = { c: "common", r: "rare", v: "veryRare", l: "legendary", m: "mythic" };
 const TIME: Record<string, TimeOfDay | "any"> = { d: "day", n: "night", a: "any" };
 const REACH: Record<string, Reach | "any"> = { n: "near", f: "far", a: "any" };
 
@@ -28,6 +28,8 @@ const RARITY_STATS: Record<Rarity, { price: number; weight: number; zone: number
   rare: { price: 23, weight: 40, zone: 0.36 },
   veryRare: { price: 88, weight: 12, zone: 0.26 },
   legendary: { price: 500, weight: 3, zone: 0.17 },
+  // 신화: 전설의 3분의 1 확률, 5배 가격, 가장 좁은 칸
+  mythic: { price: 2500, weight: 1, zone: 0.12 },
 };
 
 const FEATURES = [
@@ -41,7 +43,7 @@ function build(prefix: string, maps: MapId[], lines: string): FishSpecies[] {
     .trim()
     .split("\n")
     .map((line, i) => {
-      const [name, r, body, t, re] = line.trim().split(":");
+      const [name, r, body, t, re, mp] = line.trim().split(":");
       const rarity = RARITY[r];
       const [minSize, maxSize] = BODY_SIZE[body];
       const stats = RARITY_STATS[rarity];
@@ -54,7 +56,7 @@ function build(prefix: string, maps: MapId[], lines: string): FishSpecies[] {
         maxSize,
         body,
         features: [FEATURES[(i * 5 + prefix.length) % FEATURES.length], PATTERNS[(i * 3) % PATTERNS.length]],
-        maps,
+        maps: mp ? (mp.split("+") as MapId[]) : maps,
         time: TIME[t],
         reach: REACH[re],
         weight: stats.weight,
@@ -117,9 +119,16 @@ const LAKE = build("lake", ["lake"], `
 용잉어:l:carp:a:f
 진주붕어:v:carp:d:n
 심연의가물치:v:catfish:n:f
+연화등불메기:l:catfish:n:f
+비취가물치:l:catfish:a:f
+나비날개어:l:round:d:f
+황금등껍질어:l:round:a:f
+천년이무기:m:eel:n:f
+연화봉황어:m:round:d:f
 `);
 
-const PIER = build("pier", ["pier"], `
+// shortcut: 크루즈는 전용 물고기가 정해지기 전까지 부두 물고기를 임시로 같이 쓴다, 전용 목록이 정해지면 "cruise"를 빼고 새로 만든다
+const PIER = build("pier", ["pier", "cruise"], `
 도다리:c:flat:a:n
 광어:r:flat:a:a
 우럭:c:bass:a:a
@@ -140,16 +149,22 @@ const PIER = build("pier", ["pier"], `
 갑오징어:r:squid:a:n
 문어:r:squid:a:n
 가오리:r:ray:a:f
-까치상어:v:shark:n:f
+까치상어:l:shark:n:f:ice
 아귀:r:catfish:n:f
 황새치:v:shark:d:f
 참치:v:slim:d:f
 청새치:v:shark:d:f
 형광오징어:v:squid:n:f
 달빛갈치:v:slim:n:f
-대왕문어:l:squid:n:f
-리바이어던:l:whale:n:f
-크라켄:l:squid:n:f
+대왕문어:l:squid:d:f:lake
+리바이어던:l:whale:n:f:pier
+크라켄:l:squid:n:f:pier
+천공비행어:l:round:d:f:pier
+산호불꽃쏠배감펭:l:round:d:f:pier
+고대나선어:l:round:n:f:pier
+해초왕해마:l:slim:a:f:pier
+용왕의 해신수:m:round:a:f:pier
+무지개유니콘피쉬:m:round:d:f:pier
 `);
 
 const ICE = build("ice", ["ice"], `
@@ -174,18 +189,36 @@ const ICE = build("ice", ["ice"], `
 서리복어:r:puffer:a:a
 얼음도다리:c:flat:a:n
 남극빙어:c:slim:d:n
-오로라연어:v:slim:n:f
+오로라연어:l:slim:d:f
 한파대구:r:bass:n:f
 고드름물고기:v:eel:n:f
-그린란드상어:v:shark:n:f
-빙하고래:l:whale:n:f
-프로스트드래곤피쉬:l:eel:n:f
+그린란드상어:l:shark:n:f
+빙하고래:l:whale:n:f:pier
+프로스트드래곤피쉬:l:eel:n:f:pier
 눈의여왕대구:l:bass:n:f
 북극광철갑상어:l:shark:n:f
 하얀유령어:r:slim:n:a
+은빛빙어:l:slim:d:f
+빙정창어:l:slim:a:f
+설화유영어:l:round:d:f
+설령빙호어:m:round:n:f
+빙하거신수:m:whale:a:f
 `);
 
-export const SPECIES: FishSpecies[] = [...COMMON, ...LAKE, ...PIER, ...ICE];
+// 크루즈 전용 전설(깊은 바다: 어둡고 기묘한 모습). 일반 물고기는 아직 부두 물고기를 같이 쓴다
+const CRUISE = build("cruise", ["cruise"], `
+심연등불아귀:l:round:n:f
+유령날개가오리:l:ray:n:f
+블랙홀장어:l:eel:n:f
+홍월흡혈오징어:l:squid:a:f
+심해갑옷어:l:round:d:f
+심해수정해파리:l:squid:a:f
+황금송곳니어:l:bass:d:f
+심연의 흑룡:m:eel:n:f
+태초의 성운어:m:slim:n:f
+`);
+
+export const SPECIES: FishSpecies[] = [...COMMON, ...LAKE, ...PIER, ...ICE, ...CRUISE];
 
 const BY_ID = new Map(SPECIES.map((s) => [s.id, s]));
 export function speciesById(id: string): FishSpecies | undefined {

@@ -13,7 +13,7 @@ export const MAX_PLAYERS = 8;
 export const RECONNECT_SECONDS = 60;
 export const CHAT_MAX_LENGTH = 100;
 
-export const RARITY_ORDER: Rarity[] = ["common", "rare", "veryRare", "legendary"];
+export const RARITY_ORDER: Rarity[] = ["common", "rare", "veryRare", "legendary", "mythic"];
 
 /** 서버 시계 기준으로 방 안 모두가 같은 시간대를 본다 */
 export function timeOfDay(nowMs: number): TimeOfDay {
@@ -47,8 +47,8 @@ export function candidatesFor(mapId: MapId, time: TimeOfDay, reach: Reach): Fish
 }
 
 /** 등급별 가중치 배율(미끼가 바꾼다). 0이면 그 등급은 아예 안 나온다 */
-export interface PickBias { common: number; rare: number; veryRare: number; legendary: number }
-export const NO_BIAS: PickBias = { common: 1, rare: 1, veryRare: 1, legendary: 1 };
+export type PickBias = Record<Rarity, number>;
+export const NO_BIAS: PickBias = { common: 1, rare: 1, veryRare: 1, legendary: 1, mythic: 1 };
 
 /** rng()는 [0,1) 난수. 시험에서는 값을 고정해서 넣는다 */
 export function pickSpecies(
@@ -89,6 +89,53 @@ export function cursorAt(elapsedMs: number, speed: number): number {
 
 export function judge(cursor: number, target: number, zoneWidth: number): boolean {
   return Math.abs(cursor - target) <= zoneWidth / 2;
+}
+
+/**
+ * 힘겨루기: 타이밍 칸을 맞춘 뒤 전설·신화 물고기는 연타로 게이지(0~1)를 채워야 잡는다.
+ * 게이지는 시간이 갈수록 줄고, 한 번 누를 때마다 gain만큼 오른다. 신화는 "발작" 구간이 있어서 그때 누르면 오히려 penalty만큼 깎인다(드레인은 멈춘다).
+ */
+export interface TugParams {
+  gain: number;
+  /** 초당 줄어드는 양 */
+  drain: number;
+  durationMs: number;
+  start: number;
+  penalty: number;
+  /** 발작 구간 [시작ms, 끝ms] (힘겨루기 시작 기준) */
+  frenzy: Array<[number, number]>;
+}
+export const TUG_MIN_GAP_MS = 80; // 초당 12번까지만 센다(자동 연타 방지)
+export const ROD_TUG_EASE = 0.06; // 낚싯대 한 단계마다 줄어드는 속도 6% 완화
+
+export function tugParams(rarity: Rarity, rodLevel: number, rng: () => number): TugParams | null {
+  const ease = 1 - ROD_TUG_EASE * rodLevel;
+  if (rarity === "legendary") return { gain: 0.07, drain: 0.25 * ease, durationMs: 8000, start: 0.3, penalty: 0, frenzy: [] };
+  if (rarity === "mythic") {
+    const frenzy = [0, 1, 2].map((k): [number, number] => {
+      const s = 2200 + k * 2800 + rng() * 600;
+      return [Math.round(s), Math.round(s + 1200)];
+    });
+    return { gain: 0.06, drain: 0.3 * ease, durationMs: 11000, start: 0.3, penalty: 0.15, frenzy };
+  }
+  return null;
+}
+
+export function inFrenzy(p: TugParams, tMs: number): boolean {
+  return p.frenzy.some(([s, e]) => tMs >= s && tMs < e);
+}
+
+/** fromMs~toMs 사이에 게이지가 줄어드는 만큼 반영한다(발작 중에는 줄지 않는다) */
+export function tugDecay(p: TugParams, g: number, fromMs: number, toMs: number): number {
+  for (let t = fromMs; t < toMs; t += 20) {
+    if (!inFrenzy(p, t)) g -= (p.drain * Math.min(20, toMs - t)) / 1000;
+  }
+  return g;
+}
+
+/** 한 번 누른 결과 */
+export function tugPull(p: TugParams, g: number, tMs: number): number {
+  return Math.min(1, inFrenzy(p, tMs) ? g - p.penalty : g + p.gain);
 }
 
 /** 어려운 물고기일수록 커서가 빨라진다 */

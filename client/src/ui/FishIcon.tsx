@@ -1,17 +1,28 @@
 import type { FishSpecies, Rarity } from "@fishing/shared";
+import { useEffect, useState } from "react";
 import { speciesColors, speciesPattern } from "../three/fishModel";
+import { cachedFishIcon, fishIconUrl } from "../three/fishIcon3d";
+import { MythicArt, hasMythicArt } from "./MythicArt";
 
 export const RARITY_LABEL: Record<Rarity, string> = {
-  common: "일반", rare: "희귀", veryRare: "매우 희귀", legendary: "전설",
+  common: "일반", rare: "희귀", veryRare: "매우 희귀", legendary: "전설", mythic: "신화",
 };
 export const RARITY_COLOR: Record<Rarity, string> = {
-  common: "#9aa6b2", rare: "#4aa3ff", veryRare: "#b46bff", legendary: "#ffb020",
+  common: "#9aa6b2", rare: "#4aa3ff", veryRare: "#b46bff", legendary: "#ffb020", mythic: "#ff4d6d",
 };
 
 const hex = (c: { getHexString(): string }) => `#${c.getHexString()}`;
 
 /** 도감과 인벤토리에 쓰는 2D 물고기 그림 (종마다 색과 무늬가 다르다) */
 export function FishIcon({ sp, size = 96, silhouette = false }: { sp: FishSpecies; size?: number; silhouette?: boolean }) {
+  const special = sp.rarity === "legendary";
+  const [img, setImg] = useState<string | null>(() => (special ? cachedFishIcon(sp.id) : null));
+  useEffect(() => {
+    if (!special || img) return;
+    let alive = true;
+    void fishIconUrl(sp).then((u) => alive && u && setImg(u));
+    return () => { alive = false; };
+  }, [sp.id, special, img]);
   const { base, belly, accent } = speciesColors(sp);
   const b = silhouette ? "#8a93a8" : hex(base);
   const bl = silhouette ? "#9aa3b8" : hex(belly);
@@ -73,6 +84,11 @@ export function FishIcon({ sp, size = 96, silhouette = false }: { sp: FishSpecie
         {sp.features.includes("whiskers") && <path d={`M${cx + rx} 44 q8 4 14 10 M${cx + rx} 46 q10 0 16 4`} stroke="#4a3b52" strokeWidth="1.6" fill="none" />}
       </>
     );
+  }
+  if (sp.rarity === "mythic" && hasMythicArt(sp.name)) return <MythicArt name={sp.name} size={size} silhouette={silhouette} />; // 직접 그린 일러스트
+  // 전설은 3D 모델로 찍은 그림을 쓴다(아직 못 만들었으면 기본 그림)
+  if (special && img) {
+    return <img src={img} width={size} height={(size * 2) / 3} alt={sp.name} draggable={false} style={{ objectFit: "contain", filter: silhouette ? "brightness(0) opacity(0.35)" : undefined }} />;
   }
   return (
     <svg viewBox="0 0 120 80" width={size} height={(size * 80) / 120} style={{ overflow: "visible" }}>

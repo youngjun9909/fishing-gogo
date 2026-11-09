@@ -92,10 +92,10 @@ export function baitEffects(id: string | null | undefined) {
     /** 등급별 가중치 배율: 반짝이는 희귀 이상 2배, 황금은 일반을 막고 매우 희귀 2배, 전설 3배 */
     bias:
       id === "bait-glitter"
-        ? { common: 1, rare: 2, veryRare: 2, legendary: 2 }
+        ? { common: 1, rare: 2, veryRare: 2, legendary: 2, mythic: 1 }
         : id === "bait-gold"
-          ? { common: 0, rare: 1, veryRare: 2, legendary: 3 }
-          : { common: 1, rare: 1, veryRare: 1, legendary: 1 },
+          ? { common: 0, rare: 1, veryRare: 2, legendary: 3, mythic: 2 }
+          : { common: 1, rare: 1, veryRare: 1, legendary: 1, mythic: 1 },
     zoneMul: id === "bait-gold" ? 1.15 : 1,
   };
 }
@@ -123,10 +123,10 @@ export interface CodexReward {
   emotes?: string[];
 }
 
-const MAP_TITLES: Record<MapId, string> = { lake: "호수", pier: "부두", ice: "얼음" };
+const MAP_TITLES: Record<MapId, string> = { lake: "호수", pier: "부두", ice: "얼음", cruise: "크루즈" };
 
 export const CODEX_REWARDS: CodexReward[] = [
-  ...(["lake", "pier", "ice"] as MapId[]).flatMap((m): CodexReward[] => [
+  ...(["lake", "pier", "ice", "cruise"] as MapId[]).flatMap((m): CodexReward[] => [
     { id: `${m}-25`, mapId: m, ratio: 0.25, title: `${MAP_TITLES[m]}의 초보 낚시꾼`, coins: 200 },
     { id: `${m}-50`, mapId: m, ratio: 0.5, title: `${MAP_TITLES[m]}의 숙련 낚시꾼`, coins: 500 },
     { id: `${m}-100`, mapId: m, ratio: 1, title: `${MAP_TITLES[m]}의 전설`, coins: 2000 },

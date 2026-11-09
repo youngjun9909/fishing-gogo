@@ -6,7 +6,7 @@ import { CharacterRig } from "./character";
 import type { Look } from "./character";
 import { clamp, createEngine } from "./engine";
 import type { Engine } from "./engine";
-import { asSilhouette, buildFish } from "./fishModel";
+import { asSilhouette, bodyBox, buildFish } from "./fishModel";
 import { buildWorld } from "./world";
 import type { World } from "./world";
 
@@ -30,6 +30,8 @@ interface CatchAnim {
   t: number;
   from: THREE.Vector3;
   len: number;
+  /** 전설·신화: 몸 앞쪽 눈높이에 크게 띄워 보여 준다(len은 몸 크기) */
+  big?: boolean;
   notified: boolean;
   done: () => void;
 }
@@ -123,6 +125,11 @@ export class GameScene {
   private disposers: Array<() => void> = [];
   private phase = "idle";
   private myMinigame = false;
+  /** 힘겨루기(연타) 중: E 키도 당기기로 쓴다 */
+  private tugging = false;
+  private resultAt = -1e9;
+  /** 한 번 쓰고 끝나는 연출들. true를 돌려주는 동안 계속 돌아간다 */
+  private fx: Array<(dt: number) => boolean> = [];
   private npc: { rig: CharacterRig; pos: THREE.Vector3; near: boolean } | null = null;
 
   constructor(
@@ -190,7 +197,8 @@ export class GameScene {
         this.actionDown();
       }
       if (/^[1-5]$/.test(k) && !e.repeat) this.bus.emit("emoteKey", Number(k) - 1);
-      if (k === "e" && !e.repeat && this.npc?.near) this.bus.emit("npcKey", true);
+      if (k === "e" && this.tugging) { if (!e.repeat) this.pull(); } // 꾹 누르기로는 안 되고 직접 연타해야 한다
+      else if (k === "e" && !e.repeat && this.npc?.near) this.bus.emit("npcKey", true);
       if (k === "escape" || k === "c") this.cancel();
     };
     const up = (e: KeyboardEvent) => {
@@ -259,13 +267,23 @@ export class GameScene {
     const me = this.me();
     if (!me) return;
     if (me.fishing === "idle") {
+      // 연타하다가 결과가 뜬 직후의 남은 입력이 곧바로 낚싯대를 던지지 않게 잠깐 막는다
+      // (잡는 연출이 끝나기 전과 결과 카드가 떠 있는 동안도 막는다. 카드는 스페이스로 닫히므로 그 키가 던지기로 이어지면 안 된다)
+      if (this.peers.get(this.mySession)?.catch || document.querySelector(".catch")) this.resultAt = performance.now(); // 카드를 닫은 직후의 연타도 막으려고 시각을 계속 미룬다
+      if (performance.now() - this.resultAt < 900) return;
       this.charging = true;
       this.chargeStart = performance.now();
     } else if (me.fishing === "bite") {
       this.room.send("hook");
     } else if (me.fishing === "minigame") {
-      this.room.send("reel");
+      this.pull();
     }
+  }
+
+  /** 타이밍 칸 맞추기(reel)와 힘겨루기 당기기는 같은 메시지다 */
+  private pull() {
+    this.room.send("reel");
+    if (this.tugging) this.bus.emit("pulled", 1);
   }
 
   actionUp() {
@@ -317,8 +335,14 @@ export class GameScene {
       this.myMinigame = true;
       this.bus.emit("minigame", { ...m, startedAt: performance.now() });
     });
+    r.onMessage("tug", (m: any) => {
+      this.tugging = true;
+      this.bus.emit("tug", { ...m, startedAt: performance.now() });
+    });
     r.onMessage("result", (m: any) => {
       this.myMinigame = false;
+      this.tugging = false;
+      this.resultAt = performance.now();
       const peer = this.peers.get(this.mySession);
       if (peer?.silhouette) {
         peer.rig.root.parent?.remove(peer.silhouette);
@@ -352,7 +376,8 @@ export class GameScene {
     if (peer.silhouette) this.scene.remove(peer.silhouette);
     const f = buildFish(sp);
     asSilhouette(f, 0.42);
-    f.scale.setScalar(Math.min(3.2, Math.max(0.5, (sp.maxSize / 60) * (f.userData.designScale ?? 1) * 0.6)));
+    const sdim = bodyBox(f).getSize(new THREE.Vector3());
+    f.scale.setScalar(Math.min(3.2, 4.2 / Math.max(sdim.x, sdim.y, sdim.z, 0.01), Math.max(0.5, (sp.maxSize / 60) * (f.userData.designScale ?? 1) * 0.6)));
     f.userData.sp = sp;
     peer.silhouette = f;
     this.scene.add(f);
@@ -363,14 +388,85 @@ export class GameScene {
     if (!sp) return done();
     const fish = buildFish(sp);
     const ds = (fish.userData.designScale as number) ?? 1;
-    const len = Math.min(4.6, Math.max(0.7, Math.min(2.6, size / 45) * ds * (ds > 1.5 ? 0.62 : 1)));
+    const big = sp.rarity === "legendary" || sp.rarity === "mythic";
+    let len = Math.min(4.6, Math.max(0.7, Math.min(2.6, size / 45) * ds * (ds > 1.5 ? 0.62 : 1)));
+    let bodySize = 0;
+    if (big) {
+      // 전설·신화는 몸의 가장 긴 변이 일정한 크기(신화 7, 전설 5.5)가 되게 키워서 눈에 잘 띄게 한다
+      fish.scale.setScalar(1);
+      const unit = bodyBox(fish).getSize(new THREE.Vector3());
+      bodySize = sp.rarity === "mythic" ? 7 : 5.5;
+      len = bodySize / Math.max(unit.x, unit.y * 1.3, unit.z, 0.01);
+    }
     fish.scale.setScalar(len);
     const from = peer.bobber.position.clone();
     fish.position.copy(from);
     this.scene.add(fish);
     this.world.ripple(from.x, from.z);
     if (peer.shadow) peer.shadow.visible = false;
-    peer.catch = { fish, t: 0, from, len, notified: false, done };
+    peer.catch = { fish, t: 0, from, len: big ? bodySize : len, big, notified: false, done };
+    if (sp.rarity === "mythic") {
+      this.mythicBurst(from);
+      this.bus.emit("flash", "mythic");
+    }
+  }
+
+  /** 신화를 낚았을 때: 무지개 입자 폭발, 퍼지는 빛 고리, 하늘로 솟는 빛기둥 */
+  private mythicBurst(at: THREE.Vector3) {
+    const root = new THREE.Group();
+    root.position.copy(at);
+    this.scene.add(root);
+    const N = 180;
+    const pos = new Float32Array(N * 3), col = new Float32Array(N * 3), vel: THREE.Vector3[] = [];
+    const palette = ["#ff7aa8", "#ffb070", "#ffe070", "#8aff9a", "#7ad8ff", "#b09aff", "#ffffff"].map((c) => new THREE.Color(c));
+    for (let i = 0; i < N; i++) {
+      const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1), sp = 2 + Math.random() * 5;
+      vel.push(new THREE.Vector3(Math.sin(ph) * Math.cos(th), Math.abs(Math.cos(ph)) * 0.8 + 0.3, Math.sin(ph) * Math.sin(th)).multiplyScalar(sp));
+      const c = palette[i % palette.length];
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    const pm = new THREE.PointsMaterial({ size: 0.22, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const pts = new THREE.Points(geo, pm);
+    pts.frustumCulled = false;
+    root.add(pts);
+    const rings: THREE.Mesh[] = [];
+    for (let i = 0; i < 3; i++) {
+      const r = new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 8, 64), new THREE.MeshBasicMaterial({ color: palette[(i * 2) % 7], transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      r.rotation.x = Math.PI / 2;
+      root.add(r);
+      rings.push(r);
+    }
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 1.2, 30, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xffe9ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+    pillar.position.y = 15;
+    root.add(pillar);
+    let age = 0;
+    this.fx.push((dt) => {
+      age += dt;
+      const p = geo.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < N; i++) {
+        const v = vel[i];
+        v.y -= dt * 3;
+        p.setXYZ(i, p.getX(i) + v.x * dt, p.getY(i) + v.y * dt, p.getZ(i) + v.z * dt);
+      }
+      p.needsUpdate = true;
+      pm.opacity = Math.max(0, 1 - age / 2.4);
+      rings.forEach((r, i) => {
+        const u = Math.max(0, age - i * 0.25);
+        r.scale.setScalar(0.5 + u * 7);
+        (r.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.9 - u * 0.6);
+      });
+      (pillar.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.5 - age * 0.22);
+      pillar.scale.set(1 + age * 0.3, 1, 1 + age * 0.3);
+      if (age > 2.6) {
+        this.scene.remove(root);
+        geo.dispose(); pm.dispose(); pillar.geometry.dispose(); rings.forEach((r) => r.geometry.dispose());
+        return false;
+      }
+      return true;
+    });
   }
 
   // ---- 동기화 --------------------------------------------------------
@@ -573,25 +669,35 @@ export class GameScene {
     } else if (c) {
       // 줄에 걸려 물 밖으로 튀어 올라 낚싯대 끝에 매달린다
       c.t += dt;
-      const hang = tip.clone().add(new THREE.Vector3(0, -(0.9 + c.len * 0.5), 0));
-      const T1 = 1.0;
+      const face = peer.rig.facing;
+      const root = peer.rig.root.position;
+      // 큰 물고기는 몸 앞쪽 허공에 눈높이로 떠올라 옆모습을 보여 준다(발밑에 떨어지지 않게)
+      const hang = c.big
+        ? new THREE.Vector3(root.x + Math.sin(face) * (2.4 + c.len * 0.4), root.y + 1.5 + c.len * 0.5, root.z + Math.cos(face) * (2.4 + c.len * 0.4))
+        : tip.clone().add(new THREE.Vector3(0, -(0.9 + c.len * 0.5), 0));
+      const T1 = c.big ? 1.3 : 1.0;
       if (c.t < T1) {
         const u = c.t / T1;
         const e = 1 - Math.pow(1 - u, 3);
         c.fish.position.lerpVectors(c.from, hang, e);
-        c.fish.position.y += Math.sin(u * Math.PI) * 2.6;
-        c.fish.rotation.set(0, c.fish.rotation.y + dt * 3, u * Math.PI * 2.2 + Math.PI / 2 * u);
+        c.fish.position.y += Math.sin(u * Math.PI) * (c.big ? 2.6 + c.len * 0.4 : 2.6);
+        if (c.big) c.fish.rotation.set(0, face + (1 - e) * Math.PI * 2, Math.sin(u * Math.PI) * 0.5);
+        else c.fish.rotation.set(0, c.fish.rotation.y + dt * 3, u * Math.PI * 2.2 + Math.PI / 2 * u);
+      } else if (c.big) {
+        const s = c.t - T1;
+        c.fish.position.set(hang.x, hang.y + Math.sin(s * 1.6) * 0.15, hang.z);
+        c.fish.rotation.set(0, face + Math.sin(s * 1.1) * 0.35, Math.sin(s * 1.5) * 0.06);
       } else {
         const s = c.t - T1;
         c.fish.position.set(hang.x + Math.sin(s * 2.4) * 0.25, hang.y + Math.sin(s * 3.1) * 0.08, hang.z + Math.cos(s * 2.1) * 0.2);
         c.fish.rotation.set(0, c.fish.rotation.y + dt * 1.4, Math.PI / 2 + Math.sin(s * 3) * 0.18 + 0.3 * Math.max(0, 1 - s));
       }
       (c.fish.userData.update as (t: number) => void)?.(this.t * 4);
-      if (!c.notified && c.t > 2.4) {
+      if (!c.notified && c.t > (c.big ? 3.0 : 2.4)) {
         c.notified = true;
         c.done();
       }
-      if (c.t > 4.2) {
+      if (c.t > (c.big ? 4.8 : 4.2)) {
         this.scene.remove(c.fish);
         peer.catch = null;
       }
@@ -665,7 +771,7 @@ export class GameScene {
     // 낚시 중에는 찌 쪽을 같이 보여 준다 (입질 전 그림자, 퍼덕이는 모습이 잘 보이게)
     const me = this.me();
     if (peer && me && me.fishing !== "idle") {
-      const bob = new THREE.Vector3(me.bobX, 0.4, me.bobZ);
+      const bob = new THREE.Vector3(me.bobX, this.world.waterY + 0.6, me.bobZ);
       target = target.lerp(bob, 0.5);
     }
     if (peer?.catch) target = peer.catch.fish.position.clone().lerp(target, 0.4);
@@ -692,6 +798,7 @@ export class GameScene {
     this.moveMe(dt);
     this.updateNpc(dt);
     this.updateCamera(dt);
+    this.fx = this.fx.filter((f) => f(dt));
     this.world.update(this.t, this.now());
     if (this.charging) this.bus.emit("charge", this.chargePower(performance.now()));
     const me = this.me();

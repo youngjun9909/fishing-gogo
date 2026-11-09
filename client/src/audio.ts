@@ -110,7 +110,7 @@ export const sfx = {
   success(rarity: string) {
     if (!ctx || !master) return;
     const t = ctx.currentTime;
-    const notes = rarity === "legendary" ? [523, 659, 784, 1047, 1319, 1568] : rarity === "veryRare" ? [523, 659, 784, 1047] : rarity === "rare" ? [523, 659, 784] : [523, 784];
+    const notes = rarity === "mythic" ? [523, 659, 784, 1047, 1319, 1568, 2093] : rarity === "legendary" ? [523, 659, 784, 1047, 1319, 1568] : rarity === "veryRare" ? [523, 659, 784, 1047] : rarity === "rare" ? [523, 659, 784] : [523, 784];
     notes.forEach((n, i) => tone(n, t + i * 0.11, 0.35, "triangle", 0.3, master!));
   },
   fail() {
@@ -127,6 +127,7 @@ const SCALES: Record<string, { notes: number[]; bpm: number; type: OscillatorTyp
   lake: { notes: [261.6, 293.7, 329.6, 392, 440, 523.3, 587.3], bpm: 70, type: "triangle" },
   pier: { notes: [293.7, 329.6, 370, 440, 493.9, 587.3, 659.3], bpm: 92, type: "sine" },
   ice: { notes: [440, 523.3, 587.3, 659.3, 784, 880, 1046.5], bpm: 56, type: "sine" },
+  cruise: { notes: [261.6, 329.6, 392, 440, 523.3, 659.3, 784], bpm: 108, type: "triangle" },
 };
 
 export function startBgm(mapId: string) {

@@ -28,6 +28,20 @@ export function createGameServer(deps: Deps, validateMap: (data: unknown) => str
       res.end("ok");
       return;
     }
+    // 관리자용: 비공개 방을 포함한 모든 방과 접속자 닉네임. 환경 변수 ADMIN_KEY를 아는 사람만 볼 수 있다(없으면 꺼짐)
+    if (path === "/admin/rooms") {
+      const key = process.env.ADMIN_KEY;
+      const ok = !!key && new URL(req.url, "http://x").searchParams.get("key") === key;
+      if (!ok) return void res.writeHead(404).end();
+      void matchMaker.query({ name: "fishing" }).then((rooms) => {
+        const out = rooms.map((r) => ({
+          code: r.roomId, title: r.metadata?.title ?? "", public: !r.private, players: r.clients,
+          names: [...((matchMaker.getLocalRoomById(r.roomId) as any)?.state?.players?.values() ?? [])].map((p: any) => p.name),
+        }));
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify(out));
+      });
+      return;
+    }
     void api(req, res);
   });
   return server;

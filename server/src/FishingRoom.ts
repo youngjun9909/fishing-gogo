@@ -3,9 +3,9 @@ import { MapSchema, Schema, type } from "@colyseus/schema";
 import {
   BASE_MAPS, BITE_WINDOW_MS, MAX_PLAYERS, MINIGAME_TIMEOUT_MS, RECONNECT_SECONDS, WAIT_MAX_MS,
   WAIT_MIN_MS, baitById, baitEffects, castDistance, rodEffects, rodLevelOf, cursorAt, cursorSpeed, isBaseMap, isRareOrBetter, judge, pickSpecies,
-  reachOf, rollSize, sellPrice, speciesById, timeOfDay,
+  reachOf, rollSize, sellPrice, speciesById, timeOfDay, TUG_MIN_GAP_MS, tugDecay, tugParams, tugPull,
 } from "@fishing/shared";
-import type { FishSpecies, MapDef, MapId } from "@fishing/shared";
+import type { FishSpecies, MapDef, MapId, TugParams } from "@fishing/shared";
 import { ChatLimiter, cleanChat, hasBadWord } from "./chat";
 import type { GameService } from "./service";
 
@@ -57,7 +57,9 @@ export function defaultDeps(partial: Pick<RoomDeps, "service" | "authenticate"> 
 }
 
 interface Fishing {
-  phase: "idle" | "waiting" | "bite" | "minigame";
+  phase: "idle" | "waiting" | "bite" | "minigame" | "tug";
+  /** 전설·신화 힘겨루기 상태: 게이지, 마지막 계산 시각(시작 기준 ms), 시작 시각, 마지막 누른 시각 */
+  tug?: { p: TugParams; g: number; at: number; startedAt: number; lastPull: number };
   reach: "near" | "far";
   species?: FishSpecies;
   timer?: { clear(): void };
@@ -340,10 +342,41 @@ export function createFishingRoom(deps: RoomDeps) {
 
     private handleReel(client: Client) {
       const f = this.fishing.get(client.sessionId);
+      if (f?.phase === "tug") return this.handlePull(client.sessionId, f);
       if (!f || f.phase !== "minigame" || !f.species) return;
       const cursor = cursorAt(deps.now() - f.startedAt!, f.speed!);
       const ok = judge(cursor, f.target!, f.zone ?? f.species.zoneWidth);
-      void this.finish(client.sessionId, ok, ok ? "caught" : "escaped");
+      const tug = ok ? tugParams(f.species.rarity, this.rods.get(client.sessionId) ?? 0, deps.rng) : null;
+      if (!tug) return void this.finish(client.sessionId, ok, ok ? "caught" : "escaped");
+      // 전설·신화: 타이밍을 맞추면 이어서 힘겨루기(연타)
+      f.timer?.clear();
+      const now = deps.now();
+      f.phase = "tug";
+      f.tug = { p: tug, g: tug.start, at: 0, startedAt: now, lastPull: -TUG_MIN_GAP_MS };
+      client.send("tug", tug);
+      f.timer = this.clock.setInterval(() => this.tugTick(client.sessionId), 100);
+    }
+
+    private tugTick(sessionId: string) {
+      const f = this.fishing.get(sessionId);
+      if (!f?.tug) return;
+      const t = deps.now() - f.tug.startedAt;
+      f.tug.g = tugDecay(f.tug.p, f.tug.g, f.tug.at, t);
+      f.tug.at = t;
+      if (f.tug.g <= 0) void this.finish(sessionId, false, "escaped");
+      else if (t >= f.tug.p.durationMs) void this.finish(sessionId, false, "timeout");
+    }
+
+    private handlePull(sessionId: string, f: Fishing) {
+      const tug = f.tug!;
+      const t = deps.now() - tug.startedAt;
+      if (t - tug.lastPull < TUG_MIN_GAP_MS) return;
+      tug.g = tugDecay(tug.p, tug.g, tug.at, t);
+      tug.at = t;
+      tug.lastPull = t;
+      tug.g = tugPull(tug.p, tug.g, t);
+      if (tug.g >= 1) void this.finish(sessionId, true, "caught");
+      else if (tug.g <= 0) void this.finish(sessionId, false, "escaped");
     }
 
     private cancelFishing(sessionId: string) {

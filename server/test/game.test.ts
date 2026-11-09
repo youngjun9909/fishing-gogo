@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, SPECIES, baitEffects, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf, sellPrice } from "@fishing/shared";
+import { CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, SPECIES, baitEffects, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf, sellPrice, inFrenzy, tugDecay, tugParams, tugPull } from "@fishing/shared";
 import { matchMaker } from "@colyseus/core";
 import { hasBadWord } from "../src/chat";
 import { startHarness, until, waitMessage } from "./harness";
@@ -266,6 +266,34 @@ describe("낚시", () => {
   });
 });
 
+describe("전설 힘겨루기(서버)", () => {
+  it("타이밍을 맞춘 뒤 연타로 게이지를 채워야 잡힌다", async () => {
+    const list = candidatesFor("lake", "day", "far");
+    const dragon = list.find((s) => s.rarity === "legendary")!;
+    const before = list.slice(0, list.indexOf(dragon)).reduce((a, s) => a + s.weight, 0);
+    const total = list.reduce((a, s) => a + s.weight, 0);
+    h.rng.next = () => (before + 1) / total;
+    const { clients } = await h.open(["alice"]);
+    const alice = clients[0];
+    const bite = waitMessage(alice, "bite");
+    alice.send("cast", { power: 0.8, yaw: Math.PI });
+    expect((await bite).speciesId).toBe(dragon.id);
+    alice.send("hook");
+    const mini = await waitMessage(alice, "minigame");
+    const tug = waitMessage(alice, "tug");
+    h.clock.now += (mini.target / 2 / mini.speed) * 1000;
+    alice.send("reel");
+    expect((await tug).gain).toBeGreaterThan(0);
+    const result = waitMessage(alice, "result");
+    for (let i = 0; i < 40; i++) {
+      h.clock.now += 125;
+      alice.send("reel");
+      await new Promise((ok) => setTimeout(ok, 15));
+    }
+    expect((await result).success).toBe(true);
+  });
+});
+
 describe("경제와 도감", () => {
   const record = async (id: string, speciesId: string, size = 20) => {
     await h.service.ensureProfile(id);
@@ -438,8 +466,8 @@ describe("경제와 도감", () => {
     for (const s of lake.slice(0, need + 3)) {
       given += (await h.service.recordCatch("a", s.id, s.minSize, "lake")).rewards.length;
     }
-    // 공통 물고기는 모든 맵의 도감에 들어가서 세 맵의 25% 보상이 함께 열린다
-    expect(given).toBe(3);
+    // 공통 물고기는 모든 맵의 도감에 들어가서 네 맵의 25% 보상이 함께 열린다
+    expect(given).toBe(4);
     const p = (await h.service.profile("a"))!;
     expect(p.titles).toContain("호수의 초보 낚시꾼");
   });
@@ -459,5 +487,36 @@ describe("캐릭터와 맵 저장", () => {
     for (let i = 0; i < 5; i++) await h.service.saveCustomMap("a", { id: `m${i}`, name: "x", data: {} }, ok);
     await expect(h.service.saveCustomMap("a", { id: "m6", name: "x", data: {} }, ok)).rejects.toThrow("5개");
     await h.service.saveCustomMap("a", { id: "m0", name: "수정", data: {} }, ok);
+  });
+});
+
+// 힘겨루기: 전설은 연타, 신화는 발작 구간에 누르면 깎인다
+describe("힘겨루기", () => {
+  // 초당 n번 눌렀을 때 게이지를 시뮬레이션해 "이김/짐"을 돌려준다
+  const play = (p: NonNullable<ReturnType<typeof tugParams>>, perSec: number, skipFrenzy = false) => {
+    let g = p.start, at = 0;
+    for (let t = 0; t < p.durationMs; t += 1000 / perSec) {
+      if (skipFrenzy && inFrenzy(p, t)) continue;
+      g = tugPull(p, tugDecay(p, g, at, t), t);
+      at = t;
+      if (g >= 1) return true;
+      if (g <= 0) return false;
+    }
+    return false;
+  };
+  it("일반·희귀 등급은 힘겨루기가 없다", () => {
+    expect(tugParams("rare", 0, Math.random)).toBeNull();
+  });
+  it("전설: 안 누르면 놓치고 초당 8번이면 잡는다. 낚싯대가 높을수록 드레인이 줄어든다", () => {
+    const p = tugParams("legendary", 0, () => 0.5)!;
+    expect(play(p, 0.5)).toBe(false);
+    expect(play(p, 8)).toBe(true);
+    expect(tugParams("legendary", 5, () => 0.5)!.drain).toBeLessThan(p.drain);
+  });
+  it("신화: 발작 중에 계속 누르면 지고, 그때만 멈추고 연타하면 잡는다", () => {
+    const p = tugParams("mythic", 0, () => 0.5)!;
+    expect(p.frenzy).toHaveLength(3);
+    expect(play(p, 8)).toBe(false);
+    expect(play(p, 8, true)).toBe(true);
   });
 });

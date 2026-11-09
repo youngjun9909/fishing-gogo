@@ -17,6 +17,7 @@ const MAP_INFO: Record<MapId, { emoji: string; desc: string }> = {
   lake: { emoji: "🌳", desc: "잔잔한 물가에서 느긋하게. 처음 시작하기 좋아요." },
   pier: { emoji: "⚓", desc: "바다로 길게 뻗은 부두. 큰 물고기가 숨어 있어요." },
   ice: { emoji: "❄️", desc: "눈 덮인 숲속 차가운 호수. 얼음 조각이 둥둥 떠 있어요." },
+  cruise: { emoji: "🚢", desc: "망망대해를 가르는 크루즈선. 밤에는 갑판에서 파티가 열려요." },
 };
 
 export function Lobby(props: {
@@ -271,13 +272,13 @@ function Codex({ onClose, profile }: { onClose: () => void; profile: PlayerProfi
   const known = new Map((codex ?? []).map((c) => [c.speciesId, c]));
   const list = tab === "all" ? SPECIES : codexSpeciesFor(tab);
   const got = list.filter((s) => known.has(s.id)).length;
-  const names: Record<string, string> = { lake: "🌳 호수", pier: "⚓ 부두", ice: "❄️ 얼음", all: "📚 전체" };
+  const names: Record<string, string> = { lake: "🌳 호수", pier: "⚓ 부두", ice: "❄️ 얼음", cruise: "🚢 크루즈", all: "📚 전체" };
   const rewards = CODEX_REWARDS.filter((r) => r.mapId === tab);
 
   return (
     <Modal title="📖 물고기 도감" onClose={onClose}>
       <div className="tabs">
-        {(["lake", "pier", "ice", "all"] as const).map((t) => (
+        {(["lake", "pier", "ice", "cruise", "all"] as const).map((t) => (
           <button key={t} className={`tab ${tab === t ? "on" : ""}`} onClick={() => setTab(t)}>{names[t]}</button>
         ))}
         <span className="chip" style={{ marginLeft: "auto" }}>{got} / {list.length}</span>

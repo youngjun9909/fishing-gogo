@@ -1,5 +1,5 @@
-export type Rarity = "common" | "rare" | "veryRare" | "legendary";
-export type MapId = "lake" | "pier" | "ice";
+export type Rarity = "common" | "rare" | "veryRare" | "legendary" | "mythic";
+export type MapId = "lake" | "pier" | "ice" | "cruise";
 export type TimeOfDay = "day" | "night";
 /** 던진 거리: near는 발밑 가까운 물, far는 멀리 던진 깊은 물 */
 export type Reach = "near" | "far";

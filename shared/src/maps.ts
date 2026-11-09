@@ -55,7 +55,34 @@ const ice: MapDef = {
   bgm: "bgm-ice",
 };
 
-export const BASE_MAPS: Record<MapId, MapDef> = { lake, pier, ice };
+// 크루즈선: 양 끝이 둥근 긴 갑판(스타디움 모양). 갑판 밖은 모두 바다이고, 낚시는 난간 너머로 한다
+export const CRUISE_HULL = { cx: 0, cz: 2, hx: 38, hz: 14 };
+/** 선체 윤곽까지의 부호 있는 거리: 음수면 배 안쪽 */
+function hullDist(x: number, z: number): number {
+  const { cx, cz, hx, hz } = CRUISE_HULL;
+  const qx = Math.abs(x - cx) - (hx - hz);
+  const qz = Math.abs(z - cz);
+  return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - hz;
+}
+// 걸어 들어갈 수 없는 곳: [x0, x1, z0, z1] (선실 건물, 무대, 수영장, 바)
+const CRUISE_BLOCKS: Array<[number, number, number, number]> = [
+  [-22, 22, 5.9, 16],
+  [-33.2, -25.8, -5.3, 3.3],
+  [11.6, 22.4, -6.4, 2.4],
+  [-7.2, 9.2, 3.5, 5.9],
+];
+const cruise: MapDef = {
+  id: "cruise",
+  name: "크루즈 파티",
+  halfSize: 40,
+  spawn: { x: -1, z: -10 },
+  isWater: (x, z) => hullDist(x, z) > 0,
+  isWalkable: (x, z) =>
+    hullDist(x, z) < -0.8 && !CRUISE_BLOCKS.some(([x0, x1, z0, z1]) => x >= x0 && x <= x1 && z >= z0 && z <= z1),
+  bgm: "bgm-cruise",
+};
+
+export const BASE_MAPS: Record<MapId, MapDef> = { lake, pier, ice, cruise };
 
 export function isBaseMap(id: string): id is MapId {
   return id in BASE_MAPS;
