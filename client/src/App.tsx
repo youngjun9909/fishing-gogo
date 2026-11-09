@@ -57,7 +57,8 @@ export default function App() {
     }
   };
 
-  const createRoom = (map: string) => enter(() => colyseus.create("fishing", { map, token: auth.token }), map);
+  const createRoom = (map: string, title: string, isPublic: boolean) =>
+    enter(() => colyseus.create("fishing", { map, title, isPublic, token: auth.token }), map);
   const joinRoom = (code: string) =>
     enter(async () => {
       const room = await colyseus.joinById(code.trim().toUpperCase(), { token: auth.token });

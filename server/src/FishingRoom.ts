@@ -6,7 +6,7 @@ import {
   reachOf, rollSize, sellPrice, speciesById, timeOfDay,
 } from "@fishing/shared";
 import type { FishSpecies, MapDef, MapId } from "@fishing/shared";
-import { ChatLimiter, cleanChat } from "./chat";
+import { ChatLimiter, cleanChat, hasBadWord } from "./chat";
 import type { GameService } from "./service";
 
 export class PlayerState extends Schema {
@@ -95,8 +95,13 @@ export function createFishingRoom(deps: RoomDeps) {
     private rods = new Map<string, number>(); // 접속한 사람의 낚싯대 단계
     private baitPick = new Map<string, string | null>(); // 낚시할 때 쓰기로 고른 미끼(없으면 안 씀)
 
-    async onCreate(options: { map?: string; ownerId?: string }) {
+    async onCreate(options: { map?: string; ownerId?: string; title?: string; isPublic?: boolean }) {
       const mapId = options.map ?? "lake";
+      const title = String(options.title ?? "").trim().slice(0, 20);
+      if (hasBadWord(title)) throw new Error("방 제목에 쓸 수 없는 말이 들어 있어요");
+      // 공개 방만 방 목록에 나온다. 비공개 방도 코드·링크로는 들어올 수 있다
+      await this.setPrivate(options.isPublic !== true);
+      await this.setMetadata({ title, mapId, hostName: "" });
       const map = await deps.resolveMap(mapId, options.ownerId ?? "");
       if (!map) throw new Error("없는 맵이에요");
       this.map = map;
@@ -152,6 +157,7 @@ export function createFishingRoom(deps: RoomDeps) {
       this.rods.set(client.sessionId, rodLevelOf(profile.equipped));
       this.limiters.set(client.sessionId, new ChatLimiter());
       if (!this.state.hostId) this.state.hostId = client.sessionId;
+      this.syncHostName();
       client.send("welcome", {
         code: this.roomId,
         sessionId: client.sessionId,
@@ -177,6 +183,11 @@ export function createFishingRoom(deps: RoomDeps) {
         const next = this.state.players.keys().next();
         this.state.hostId = next.done ? "" : next.value;
       }
+      this.syncHostName();
+    }
+
+    private syncHostName() {
+      void this.setMetadata({ hostName: this.state.players.get(this.state.hostId)?.name ?? "" });
     }
 
     onDispose() {

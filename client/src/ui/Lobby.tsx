@@ -11,7 +11,7 @@ import { buildBait } from "../three/baits";
 import { buildRod } from "../three/rods";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
 
-type Modal = null | "create" | "join" | "inventory" | "codex" | "shop" | "settings";
+type Modal = null | "create" | "rooms" | "join" | "inventory" | "codex" | "shop" | "settings";
 
 const MAP_INFO: Record<MapId, { emoji: string; desc: string }> = {
   lake: { emoji: "🌳", desc: "잔잔한 물가에서 느긋하게. 처음 시작하기 좋아요." },
@@ -22,7 +22,7 @@ const MAP_INFO: Record<MapId, { emoji: string; desc: string }> = {
 export function Lobby(props: {
   profile: PlayerProfile;
   reload: () => Promise<void>;
-  onCreate: (map: string) => void;
+  onCreate: (map: string, title: string, isPublic: boolean) => void;
   onJoin: (code: string) => void;
   onLogout: () => void;
   error: string;
@@ -69,6 +69,7 @@ export function Lobby(props: {
         {!creating && (
           <div className="menu panel">
             <button className="btn pink wide" onClick={() => open("create")}>🎣 방 만들기</button>
+            <button className="btn mint wide" onClick={() => open("rooms")}>📋 방 목록</button>
             <button className="btn mint wide" onClick={() => open("join")}>🔑 코드로 입장</button>
             <button className="btn" onClick={() => open("inventory")}>🎒 인벤토리</button>
             <button className="btn" onClick={() => open("codex")}>📖 도감</button>
@@ -97,7 +98,8 @@ export function Lobby(props: {
         )}
       </div>
 
-      {modal === "create" && <CreateRoom onClose={() => setModal(null)} onPick={(m) => props.onCreate(m)} />}
+      {modal === "create" && <CreateRoom onClose={() => setModal(null)} defaultTitle={`${profile.nickname}의 방`} onPick={props.onCreate} />}
+      {modal === "rooms" && <RoomList onClose={() => setModal(null)} onJoin={props.onJoin} />}
       {modal === "join" && <JoinRoom onClose={() => setModal(null)} onJoin={props.onJoin} />}
       {modal === "inventory" && <Inventory onClose={() => setModal(null)} reload={props.reload} rod={rodLevelOf(profile.equipped)} />}
       {modal === "codex" && <Codex onClose={() => setModal(null)} profile={profile} />}
@@ -122,12 +124,20 @@ function Modal({ title, onClose, children, narrow }: { title: string; onClose: (
 }
 export { Modal };
 
-function CreateRoom({ onClose, onPick }: { onClose: () => void; onPick: (m: string) => void }) {
+function CreateRoom({ onClose, onPick, defaultTitle }: { onClose: () => void; onPick: (m: string, title: string, isPublic: boolean) => void; defaultTitle: string }) {
+  const [title, setTitle] = useState("");
+  const [isPublic, setPublic] = useState(false);
   return (
     <Modal title="어디서 낚시할까요?" onClose={onClose}>
+      <input className="field" placeholder={`방 제목 (비우면 "${defaultTitle}")`} maxLength={20} value={title} onChange={(e) => setTitle(e.target.value)} style={{ marginBottom: 10 }} />
+      <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+        <button className={`opt ${!isPublic ? "on" : ""}`} onClick={() => setPublic(false)}>🔒 비공개</button>
+        <button className={`opt ${isPublic ? "on" : ""}`} onClick={() => setPublic(true)}>🌍 공개</button>
+      </div>
+      <p className="hint" style={{ marginBottom: 14 }}>{isPublic ? "방 목록에 나와서 누구나 들어올 수 있어요." : "방 목록에 안 나오고, 코드나 초대 링크로만 들어와요."}</p>
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}>
         {(Object.keys(BASE_MAPS) as MapId[]).map((m) => (
-          <button key={m} className="cell" style={{ minHeight: 170, cursor: "pointer" }} onClick={() => { sfx.click(); onPick(m); }}>
+          <button key={m} className="cell" style={{ minHeight: 170, cursor: "pointer" }} onClick={() => { sfx.click(); onPick(m, title.trim() || defaultTitle, isPublic); }}>
             <div style={{ fontSize: 46 }}>{MAP_INFO[m].emoji}</div>
             <div className="nm" style={{ fontSize: 22 }}>{BASE_MAPS[m].name}</div>
             <div className="sub">{MAP_INFO[m].desc}</div>
@@ -135,6 +145,26 @@ function CreateRoom({ onClose, onPick }: { onClose: () => void; onPick: (m: stri
         ))}
       </div>
       <p className="hint" style={{ marginTop: 14 }}>방을 만들면 초대 코드가 생기고, 카카오톡으로 친구를 부를 수 있어요. (최대 8명)</p>
+    </Modal>
+  );
+}
+
+interface RoomInfo { code: string; title: string; mapId: MapId; hostName: string; players: number; max: number }
+
+function RoomList({ onClose, onJoin }: { onClose: () => void; onJoin: (code: string) => void }) {
+  const [rooms, refetch] = useFetch<RoomInfo[]>("/api/rooms");
+  return (
+    <Modal title="📋 공개 방 목록" onClose={onClose}>
+      <button className="btn small ghost" style={{ marginBottom: 12 }} onClick={() => { sfx.click(); refetch(); }}>🔄 새로고침</button>
+      {rooms && !rooms.length && <p className="hint">지금 열려 있는 공개 방이 없어요. 직접 방을 만들어 보세요!</p>}
+      <div className="stack">
+        {(rooms ?? []).map((r) => (
+          <button key={r.code} className="cell" style={{ textAlign: "left", cursor: "pointer", minHeight: 0, padding: "10px 14px" }} onClick={() => { sfx.click(); onJoin(r.code); }}>
+            <div className="nm">{r.title || "이름 없는 방"}</div>
+            <div className="sub">{BASE_MAPS[r.mapId]?.name ?? "내 맵"} · 👥 {r.players}/{r.max}{r.hostName && ` · 방장 ${r.hostName}`}</div>
+          </button>
+        ))}
+      </div>
     </Modal>
   );
 }
@@ -163,17 +193,21 @@ function JoinRoom({ onClose, onJoin }: { onClose: () => void; onJoin: (code: str
 function useFetch<T>(path: string, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
   const [tick, setTick] = useState(0);
+  const [error, setError] = useState("");
   useEffect(() => {
     let alive = true;
-    api<T>(path).then((d) => alive && setData(d)).catch(() => alive && setData(null));
+    setError("");
+    api<T>(path)
+      .then((d) => alive && setData(d))
+      .catch((e) => alive && (setData(null), setError(e instanceof Error ? e.message : "불러오지 못했어요")));
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, tick, ...deps]);
-  return [data, () => setTick((t) => t + 1)] as const;
+  return [data, () => setTick((t) => t + 1), error] as const;
 }
 
 export function Inventory({ onClose, reload, rod, canSell = true }: { onClose: () => void; reload: () => Promise<void>; rod: number; canSell?: boolean }) {
-  const [list, refetch] = useFetch<CatchRecord[]>("/api/inventory");
+  const [list, refetch, loadError] = useFetch<CatchRecord[]>("/api/inventory");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState("");
   const total = (list ?? []).filter((c) => sel.has(c.id)).reduce((a, c) => a + sellPrice(speciesById(c.speciesId)!, c.size, rod), 0);
@@ -203,6 +237,11 @@ export function Inventory({ onClose, reload, rod, canSell = true }: { onClose: (
         </div>
       ) : (
         <p className="hint" style={{ marginBottom: 12 }}>물고기는 상인 아저씨에게 가서 팔 수 있어요 🧑‍🌾</p>
+      )}
+      {loadError && (
+        <p className="err">
+          물고기 목록을 불러오지 못했어요: {loadError} <button className="btn small ghost" onClick={refetch}>다시 시도</button>
+        </p>
       )}
       {list && !list.length && <p className="hint">아직 잡은 물고기가 없어요. 방을 만들어 낚시를 떠나 볼까요?</p>}
       <div className="grid">

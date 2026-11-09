@@ -1,5 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, SPECIES, baitEffects, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf, sellPrice } from "@fishing/shared";
+import { matchMaker } from "@colyseus/core";
+import { hasBadWord } from "../src/chat";
 import { startHarness, until, waitMessage } from "./harness";
 import type { Harness } from "./harness";
 
@@ -37,6 +39,22 @@ describe("방과 초대", () => {
   it("로그인 없이 입장하면 거절된다", async () => {
     const { code } = await h.open(["alice"]);
     await expect(h.colyseus.sdk.joinById(code, {})).rejects.toBeTruthy();
+  });
+
+  it("공개 방만 목록에 나오고, 제목의 욕설은 기호를 끼워도 거절된다", async () => {
+    const make = (title: string, isPublic: boolean) => h.colyseus.sdk.create("fishing", { map: "lake", token: "alice", title, isPublic });
+    await make("함께 낚시", true);
+    await make("비밀방", false);
+    const rooms = (await matchMaker.query({ name: "fishing", private: false, locked: false })).map((r) => r.metadata?.title);
+    expect(rooms).toEqual(["함께 낚시"]);
+    for (const bad of ["시@@발", "시...발 방", "ㅅ ㅂ", "시1발", "시ㅡ/발", "SeX 방", "야.동"]) {
+      await expect(make(bad, true)).rejects.toBeTruthy();
+    }
+    expect(hasBadWord("즐거운 낚시 모임")).toBe(false);
+    expect(hasBadWord("해보지 마")).toBe(false);
+    expect(hasBadWord("자지 말고 낚시")).toBe(true); // 덩어리가 '자지'뿐이면 막는다(평범한 뜻이어도)
+    expect(hasBadWord("보지")).toBe(true);
+    expect(hasBadWord("우리 보@지 방")).toBe(true);
   });
 
   it("없는 방 코드는 거절된다", async () => {

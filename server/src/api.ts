@@ -8,6 +8,7 @@ export function createApi(
   service: GameService,
   authenticate: (token: string) => Promise<string | null>,
   validateMap: (data: unknown) => string | null,
+  listRooms: () => Promise<unknown> = async () => [],
 ) {
   const routes: Record<string, Handler> = {
     "GET /api/me": (id) => service.ensureProfile(id),
@@ -25,6 +26,7 @@ export function createApi(
       if (!id.startsWith("dev:")) throw new Error("개발용 계정만 쓸 수 있어요");
       return service.devGrant(id);
     },
+    "GET /api/rooms": async () => listRooms(),
     "GET /api/maps": (id) => service.customMaps(id),
     "POST /api/maps": async (id, b) => {
       await service.saveCustomMap(id, { id: String(b.id), name: String(b.name ?? "내 맵"), data: b.data }, validateMap);

@@ -1,4 +1,4 @@
-import { Server } from "@colyseus/core";
+import { Server, matchMaker } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { createApi } from "./api";
 import { createAuthenticator } from "./auth";
@@ -13,7 +13,12 @@ type Deps = ReturnType<typeof defaultDeps>;
 export function createGameServer(deps: Deps, validateMap: (data: unknown) => string | null = () => null) {
   const server = new Server({ transport: new WebSocketTransport() });
   server.define("fishing", createFishingRoom(deps));
-  const api = createApi(deps.service, deps.authenticate, validateMap);
+  // 방 목록: 공개이고 아직 자리가 있는 방만(꽉 차면 Colyseus가 잠가서 빠진다)
+  const listRooms = async () =>
+    (await matchMaker.query({ name: "fishing", private: false, locked: false })).map((r) => ({
+      code: r.roomId, title: r.metadata?.title ?? "", mapId: r.metadata?.mapId ?? "lake", hostName: r.metadata?.hostName ?? "", players: r.clients, max: r.maxClients,
+    }));
+  const api = createApi(deps.service, deps.authenticate, validateMap, listRooms);
   // 매치메이킹 요청은 Colyseus가 처리하고, /api/ 요청만 여기서 처리한다
   (server.transport as any).server.on("request", (req: any, res: any) => {
     // Render 같은 호스팅이 "/"로 서버가 살아 있는지 확인한다. 아무도 답하지 않으면 멈춘 것으로 보고 접속을 끊는다

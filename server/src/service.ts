@@ -3,6 +3,7 @@ import {
   speciesById,
 } from "@fishing/shared";
 import type { Appearance, CatchRecord, MapId, PlayerProfile } from "@fishing/shared";
+import { hasBadWord } from "./chat";
 import { DEFAULT_APPEARANCE, newProfile } from "./store";
 import type { PlayerStore, StoredMap } from "./store";
 
@@ -45,6 +46,7 @@ export class GameService {
 
   async setCharacter(id: string, nickname: string, appearance: Appearance): Promise<PlayerProfile> {
     if (!validNickname(nickname)) throw new Error("닉네임은 1~10자로 정해 주세요");
+    if (hasBadWord(nickname)) throw new Error("닉네임에 쓸 수 없는 말이 들어 있어요");
     if (!validAppearance(appearance)) throw new Error("캐릭터 모양이 올바르지 않아요");
     const p = await this.ensureProfile(id);
     p.nickname = nickname.trim();
