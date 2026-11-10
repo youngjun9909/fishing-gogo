@@ -11,12 +11,12 @@ import { SupabaseStore } from "./supabaseStore";
 type Deps = ReturnType<typeof defaultDeps>;
 
 export function createGameServer(deps: Deps, validateMap: (data: unknown) => string | null = () => null) {
-  const server = new Server({ transport: new WebSocketTransport() });
+  const server = new Server({ transport: new WebSocketTransport({ pingInterval: 5000, pingMaxRetries: 6 }) }) // 응답이 30초 넘게 없어야 끊는다(기본은 약 6초: 탭이 뒤로 가거나 잠깐 느려져도 튕겼다);
   server.define("fishing", createFishingRoom(deps));
   // 방 목록: 공개이고 아직 자리가 있는 방만(꽉 차면 Colyseus가 잠가서 빠진다)
   const listRooms = async () =>
     (await matchMaker.query({ name: "fishing", private: false, locked: false })).map((r) => ({
-      code: r.roomId, title: r.metadata?.title ?? "", mapId: r.metadata?.mapId ?? "lake", hostName: r.metadata?.hostName ?? "", players: r.clients, max: r.maxClients,
+      code: r.roomId, title: r.metadata?.title ?? "", mapId: r.metadata?.mapId ?? "lake", hostName: r.metadata?.hostName ?? "", players: r.metadata?.players ?? r.clients, max: r.maxClients,
     }));
   const api = createApi(deps.service, deps.authenticate, validateMap, listRooms);
   // 매치메이킹 요청은 Colyseus가 처리하고, /api/ 요청만 여기서 처리한다

@@ -188,6 +188,17 @@ function gold(): BaitFx {
   };
 }
 
+/** 그냥 미끼: 반죽 한 덩이와 바늘 */
+function plain(): BaitFx {
+  const g = new THREE.Group();
+  const dough = new THREE.Mesh(new THREE.SphereGeometry(0.28, 20, 16), std("#e8c98a", { roughness: 0.8 }));
+  g.add(dough);
+  const h = hook(std("#c9ced6", { metalness: 0.8, roughness: 0.3 }), 1.6);
+  h.position.y = -0.3;
+  g.add(h);
+  return { group: g, update: (t) => { g.rotation.y = t * 0.8; g.position.y = Math.sin(t * 1.6) * 0.04; } };
+}
+
 export function buildBait(id: string): BaitFx {
-  return id === "bait-glitter" ? glitter() : id === "bait-gold" ? gold() : worm();
+  return id === "bait-glitter" ? glitter() : id === "bait-gold" ? gold() : id === "bait-plain" ? plain() : worm();
 }

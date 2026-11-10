@@ -113,10 +113,10 @@ export function tugParams(rarity: Rarity, rodLevel: number, rng: () => number): 
   if (rarity === "legendary") return { gain: 0.07, drain: 0.25 * ease, durationMs: 8000, start: 0.3, penalty: 0, frenzy: [] };
   if (rarity === "mythic") {
     const frenzy = [0, 1, 2].map((k): [number, number] => {
-      const s = 2200 + k * 2800 + rng() * 600;
-      return [Math.round(s), Math.round(s + 1200)];
+      const s = 3200 + k * 3600 + rng() * 400; // 첫 발작은 "신화다!" 안내(약 1.4초)와 3-2-1(1.5초)이 끝난 뒤에 온다
+      return [Math.round(s), Math.round(s + 1000)];
     });
-    return { gain: 0.06, drain: 0.3 * ease, durationMs: 11000, start: 0.3, penalty: 0.15, frenzy };
+    return { gain: 0.064, drain: 0.29 * ease, durationMs: 12500, start: 0.3, penalty: 0.13, frenzy };
   }
   return null;
 }

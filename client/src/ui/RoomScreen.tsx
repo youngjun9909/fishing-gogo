@@ -10,7 +10,7 @@ import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
 import { Inventory, Modal, Shop } from "./Lobby";
 import { Forge } from "./Forge";
 
-const BAIT_EMOJI: Record<string, string> = { "bait-worm": "🪱", "bait-glitter": "✨", "bait-gold": "👑" };
+const BAIT_EMOJI: Record<string, string> = { "bait-worm": "🪱", "bait-plain": "🎣", "bait-glitter": "✨", "bait-gold": "👑" };
 
 const EMOTE_UI: Array<[string, string, string]> = [
   ["wave", "👋", "손 흔들기"], ["angry", "💢", "화내기"], ["aegyo", "💕", "애교"], ["dance", "🎵", "춤추기"], ["cry", "😢", "울기"],
@@ -63,6 +63,9 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
   const [rank, setRank] = useState<RankMsg>({ value: [], count: [], biggest: [] });
   const [rankTab, setRankTab] = useState<"value" | "count" | "biggest">("value");
   const [rankOpen, setRankOpen] = useState(() => window.innerWidth > 720); // 좁은 화면에서는 접어 둔다
+  const [hudOpen, setHudOpen] = useState(() => window.innerWidth > 720); // 왼쪽 위 메뉴도 좁은 화면에서는 접어 둔다
+  // 좁은 화면에서는 메뉴와 순위가 겹치니 하나를 열면 다른 하나는 접는다
+  const toggleHud = () => { setHudOpen((o) => !o); if (window.innerWidth <= 720) setRankOpen(false); };
   const [toast, setToast] = useState("");
   const [flash, setFlash] = useState(0);
   const [announce, setAnnounce] = useState<{ text: string; rarity: Rarity } | null>(null);
@@ -224,18 +227,24 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
     <>
       <div className="stage" ref={stage} />
       <div className={`overlay ${isTouch ? "touch" : ""}`}>
-        <div className="hud-tl">
-          <div className="panel chip invite">
-            초대 코드 <b style={{ letterSpacing: 4, fontWeight: "normal", color: "var(--pink-deep)" }}>{code}</b>
-            <button className="btn small pink" onClick={async () => setToast(await shareInvite(code, map?.name ?? ""))}>친구 초대</button>
+        <div className={`hud-tl ${hudOpen ? "" : "closed"}`}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <button className="hud-toggle btn small mint" onClick={toggleHud}>☰ 메뉴 {hudOpen ? "▲" : "▼"}</button>
+            <div className="panel chip invite hud-fold">
+              초대 코드 <b style={{ letterSpacing: 4, fontWeight: "normal", color: "var(--pink-deep)" }}>{code}</b>
+              <button className="btn small pink" onClick={async () => { setToast(await shareInvite(code, map?.name ?? "")); setTimeout(() => setToast(""), 2500); }}>친구 초대</button>
+            </div>
+            <span className="panel chip">🪙 {profile.coins.toLocaleString()}</span>
+            <span className="panel chip">💎 {(profile.stones ?? 0).toLocaleString()}</span>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="hud-fold" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <span className="panel chip">{map?.name}</span>
             <span className="panel chip">👥 {players}/{MAX_PLAYERS}</span>
             <span className="panel chip">{clock.night ? "🌙 밤" : "☀️ 낮"} · {Math.ceil(clock.left / 60000)}분</span>
-            <span className="panel chip">🪙 {profile.coins.toLocaleString()}</span>
-            <span className="panel chip">💎 {(profile.stones ?? 0).toLocaleString()}</span>
+          </div>
+          <div className="hud-fold" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="btn small mint" onClick={() => { sfx.click(); setPanel("inventory"); }}>🎒 인벤토리</button>
+            <button className="btn small" onClick={() => { sfx.click(); const say = (t: string) => { setToast(t); setTimeout(() => setToast(""), 2200); }; void afterChange().then(() => say("내 정보를 새로 불러왔어요")).catch(() => say("불러오지 못했어요. 잠시 뒤에 다시 눌러 주세요")); }}>🔄 새로고침</button>
             <button className="btn small ghost" onClick={leave}>나가기</button>
           </div>
           {/* 미끼: 누르면 한 개를 쓰고 1분 동안 입질이 빨라진다. 쓰는 중이면 남은 시간이 보인다 */}
@@ -264,7 +273,7 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
 
         <div className="hud-tr">
           <div className={`rank panel ${rankOpen ? "" : "closed"}`}>
-            <button className="rank-toggle tab on" onClick={() => setRankOpen((o) => !o)}>🏆 순위 {rankOpen ? "▲" : "▼"}</button>
+            <button className="rank-toggle tab on" onClick={() => { setRankOpen((o) => !o); if (window.innerWidth <= 720) setHudOpen(false); }}>🏆 순위 {rankOpen ? "▲" : "▼"}</button>
             <div className="tabs">
               <button className={`tab ${rankTab === "value" ? "on" : ""}`} onClick={() => setRankTab("value")}>💰 가치</button>
               <button className={`tab ${rankTab === "count" ? "on" : ""}`} onClick={() => setRankTab("count")}>🐟 마릿수</button>
@@ -381,21 +390,38 @@ function Minigame({ mini }: { mini: { target: number; zoneWidth: number; speed: 
   );
 }
 
+/** 발작 시작 전 이만큼 앞부터 3-2-1을 보여 준다(숫자 하나에 0.5초, 합쳐서 1.5초) */
+const FRENZY_WARN_MS = 1500;
+
 /** 힘겨루기: 서버와 같은 계산으로 게이지를 보여 준다(판정은 서버가 한다) */
 function Tug({ tug, onPull, bumpRef }: { tug: TugParams & { startedAt: number }; onPull: () => void; bumpRef: React.MutableRefObject<(() => void) | null> }) {
   const fill = useRef<HTMLDivElement>(null);
   const label = useRef<HTMLDivElement>(null);
   const state = useRef({ g: tug.start, at: 0 });
+  const mythic = tug.frenzy.length > 0; // 발작이 있는 건 신화뿐이다
+  const [intro, setIntro] = useState(mythic);
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!mythic) return;
+    sfx.mythicHook();
+    const id = setTimeout(() => setIntro(false), 1400);
+    return () => clearTimeout(id);
+  }, [mythic, tug]);
   useEffect(() => {
     state.current = { g: tug.start, at: 0 };
     let raf = 0;
+    let shown: number | null = null;
     const loop = () => {
       const t = performance.now() - tug.startedAt;
       const s = state.current;
       s.g = tugDecay(tug, s.g, s.at, t);
       s.at = t;
+      // 발작이 1.5초 안에 시작하면 3 → 2 → 1
+      const next = tug.frenzy.find(([from]) => t >= from - FRENZY_WARN_MS && t < from);
+      const n = next ? (t < next[0] - 1000 ? 3 : t < next[0] - 500 ? 2 : 1) : null;
+      if (n !== shown) { shown = n; setCount(n); if (n) sfx.countdown(n); }
       if (fill.current) fill.current.style.width = `${Math.max(0, Math.min(1, s.g)) * 100}%`;
-      if (label.current) label.current.textContent = inFrenzy(tug, t) ? "⚠️ 날뛰는 중! 누르지 말고 버텨요!" : isTouch ? "버튼을 마구 눌러요!" : "E 또는 스페이스를 연타해요!";
+      if (label.current) label.current.textContent = inFrenzy(tug, t) ? "⚠️ 날뛰는 중! 누르지 말고 버텨요!" : n ? "계속 눌러요! 숫자가 끝나면 손 떼요!" : isTouch ? "버튼을 마구 눌러요!" : "E 또는 스페이스를 연타해요!";
       raf = requestAnimationFrame(loop);
     };
     loop();
@@ -413,11 +439,20 @@ function Tug({ tug, onPull, bumpRef }: { tug: TugParams & { startedAt: number };
     return () => { bumpRef.current = null; };
   }, [tug, bumpRef]);
   return (
-    <div className="mini panel tug">
-      <div ref={label} style={{ fontSize: 22 }} />
-      <div className="track"><div className="tugfill" ref={fill} /></div>
-      {isTouch && <button className="btn sun tugbtn" onPointerDown={(e) => { e.preventDefault(); onPull(); }}>당겨!</button>}
-    </div>
+    <>
+      {intro && (
+        <>
+          <div className="mythic-flash" />
+          <div className="mythic-intro"><b>🌈 신화다!! 🌈</b><span>발작할 땐 누르지 마세요!</span></div>
+        </>
+      )}
+      {count !== null && <div className="frenzy-cd"><b key={count}>{count}</b><span>끝나면 손 떼요!</span></div>}
+      <div className={`mini panel tug ${mythic ? "mythic" : ""}`}>
+        <div ref={label} style={{ fontSize: 22 }} />
+        <div className="track"><div className="tugfill" ref={fill} /></div>
+        {isTouch && <button className="btn sun tugbtn" onPointerDown={(e) => { e.preventDefault(); onPull(); }}>당겨!</button>}
+      </div>
+    </>
   );
 }
 

@@ -113,6 +113,19 @@ export const sfx = {
     const notes = rarity === "mythic" ? [523, 659, 784, 1047, 1319, 1568, 2093] : rarity === "legendary" ? [523, 659, 784, 1047, 1319, 1568] : rarity === "veryRare" ? [523, 659, 784, 1047] : rarity === "rare" ? [523, 659, 784] : [523, 784];
     notes.forEach((n, i) => tone(n, t + i * 0.11, 0.35, "triangle", 0.3, master!));
   },
+  /** 신화가 걸렸을 때: 사이렌처럼 올라가는 소리와 화려한 화음 */
+  mythicHook() {
+    if (!ctx || !master) return;
+    const t = ctx.currentTime;
+    tone(300, t, 0.45, "sawtooth", 0.16, master, 1300);
+    tone(1300, t + 0.45, 0.45, "sawtooth", 0.14, master, 500);
+    [784, 988, 1175, 1568, 2093].forEach((n, i) => tone(n, t + 0.12 + i * 0.08, 0.5, "triangle", 0.25, master!));
+  },
+  /** 발작 직전 3-2-1: 숫자가 줄수록 높은 소리 */
+  countdown(n: number) {
+    if (!ctx || !master) return;
+    tone(n === 1 ? 1100 : n === 2 ? 880 : 700, ctx.currentTime, 0.2, "square", 0.22, master);
+  },
   fail() {
     if (!ctx || !master) return;
     tone(330, ctx.currentTime, 0.35, "sine", 0.3, master, 150);

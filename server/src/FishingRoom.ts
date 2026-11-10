@@ -86,6 +86,9 @@ function randomCode(rng: () => number, len = 4): string {
   return Array.from({ length: len }, () => CODE_ALPHABET[Math.floor(rng() * CODE_ALPHABET.length)]).join("");
 }
 
+// 개발 확인용: 환경 변수 FORCE_RARITY=mythic 로 서버를 켜면 그 등급만 낚인다(배포 서버에는 설정하지 않는다)
+const FORCE_RARITY = process.env.FORCE_RARITY as "legendary" | "mythic" | undefined;
+
 export function createFishingRoom(deps: RoomDeps) {
   return class FishingRoom extends Room<RoomState> {
     maxClients = MAX_PLAYERS;
@@ -98,6 +101,9 @@ export function createFishingRoom(deps: RoomDeps) {
     private names = new Map<string, string>();
     private rods = new Map<string, number>(); // 접속한 사람의 낚싯대 단계
     /** 쓴 미끼의 효과가 이어지는 동안(밀리초 시각)의 미끼. 던질 때 아직 안 끝났으면 그 효과를 받는다 */
+    /** 연결이 끊겨 돌아오길 기다리는 자리(자리 예약을 끊을 때 쓴다), 새 접속에 밀려난 옛 접속 */
+    private away = new Map<string, ReturnType<Room["allowReconnection"]>>();
+    private replaced = new Set<string>();
     private baitBuff = new Map<string, { id: string; until: number }>();
 
     async onCreate(options: { map?: string; ownerId?: string; title?: string; isPublic?: boolean }) {
@@ -106,7 +112,7 @@ export function createFishingRoom(deps: RoomDeps) {
       if (hasBadWord(title)) throw new Error("방 제목에 쓸 수 없는 말이 들어 있어요");
       // 공개 방만 방 목록에 나온다. 비공개 방도 코드·링크로는 들어올 수 있다
       await this.setPrivate(options.isPublic !== true);
-      await this.setMetadata({ title, mapId, hostName: "" });
+      await this.setMetadata({ title, mapId, hostName: "", players: 0 });
       const map = await deps.resolveMap(mapId, options.ownerId ?? "");
       if (!map) throw new Error("없는 맵이에요");
       this.map = map;
@@ -139,6 +145,8 @@ export function createFishingRoom(deps: RoomDeps) {
       for (const [sid, p] of [...this.state.players.entries()]) {
         if (p.playerId !== id) continue;
         // 나중에 들어온 접속이 이긴다: 끊겨서 남은 자리는 치우고, 아직 붙어 있는 옛 접속(다른 창·멈춘 창)은 내보낸다(4002)
+        this.replaced.add(sid);
+        this.away.get(sid)?.reject(false); // 끊겨서 기다리던 자리는 바로 놓아 준다(안 그러면 방 인원이 한동안 그대로 센다)
         this.clients.find((c) => c.sessionId === sid)?.leave(4002);
         this.cancelFishing(sid);
         this.state.players.delete(sid);
@@ -174,14 +182,19 @@ export function createFishingRoom(deps: RoomDeps) {
     }
 
     async onLeave(client: Client, consented: boolean) {
-      if (!consented) {
+      if (!consented && !this.replaced.has(client.sessionId)) {
+        const wait = this.allowReconnection(client, RECONNECT_SECONDS);
+        this.away.set(client.sessionId, wait);
         try {
-          await this.allowReconnection(client, RECONNECT_SECONDS);
+          await wait;
           return;
         } catch {
           // 시간 안에 돌아오지 못함
+        } finally {
+          this.away.delete(client.sessionId);
         }
       }
+      this.replaced.delete(client.sessionId);
       this.cancelFishing(client.sessionId);
       this.state.players.delete(client.sessionId);
       this.limiters.delete(client.sessionId);
@@ -193,7 +206,8 @@ export function createFishingRoom(deps: RoomDeps) {
     }
 
     private syncHostName() {
-      void this.setMetadata({ hostName: this.state.players.get(this.state.hostId)?.name ?? "" });
+      // players: 끊겨서 기다리는 자리는 빼고 실제로 있는 사람 수만 방 목록에 보인다
+      void this.setMetadata({ hostName: this.state.players.get(this.state.hostId)?.name ?? "", players: this.state.players.size });
     }
 
     onDispose() {
@@ -300,7 +314,7 @@ export function createFishingRoom(deps: RoomDeps) {
       const f = this.fishing.get(sessionId);
       const p = this.state.players.get(sessionId);
       if (!f || !p || f.phase !== "waiting") return;
-      const species = pickSpecies(deps.rng, this.state.mapId as MapId, timeOfDay(deps.now()), f.reach, f.eff.bias);
+      const species = pickSpecies(deps.rng, this.state.mapId as MapId, timeOfDay(deps.now()), f.reach, FORCE_RARITY ? { ...f.eff.bias, [FORCE_RARITY]: 1e9 } : f.eff.bias);
       if (!species) return this.cancelFishing(sessionId);
       f.species = species;
       f.phase = "bite";

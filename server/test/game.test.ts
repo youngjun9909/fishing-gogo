@@ -61,6 +61,16 @@ describe("방과 초대", () => {
     await expect(h.colyseus.sdk.joinById("ZZZZ", { token: "bob" })).rejects.toBeTruthy();
   });
 
+  it("끊겼다가 다시 들어온 사람은 방 목록 인원에 한 번만 센다", async () => {
+    const { code, clients } = await h.open(["alice", "bob"]);
+    const listed = async () => (await matchMaker.query({ name: "fishing" })).find((r) => r.roomId === code)?.metadata?.players;
+    for (let i = 0; i < 50 && (await listed()) !== 2; i++) await new Promise((r) => setTimeout(r, 50));
+    (clients[1] as any).connection.close(); // 닫기 버튼 없이 연결만 끊김
+    await h.colyseus.sdk.joinById(code, { token: "bob" }); // 같은 사람이 다시 들어옴
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await listed()).toBe(2);
+  });
+
   it("방장이 나가면 다음 사람이 방장이 된다", async () => {
     const { clients } = await h.open(["alice", "bob"]);
     const [alice, bob] = clients;
@@ -414,7 +424,7 @@ describe("경제와 도감", () => {
     expect(p1.equipped.bait).toBeUndefined(); // 쓸지는 낚시할 때 고른다
     expect(p1.coins).toBe(100000 - worm.price);
     await expect(h.service.buyBait("a", "없는미끼")).rejects.toThrow("없는 미끼");
-    for (let i = 0; i < 20; i++) await h.service.buyBait("a", "bait-worm").catch(() => undefined);
+    for (let i = 0; i < 100; i++) await h.service.buyBait("a", "bait-worm").catch(() => undefined);
     await expect(h.service.buyBait("a", "bait-worm")).rejects.toThrow("99개");
   });
 
@@ -540,7 +550,7 @@ describe("힘겨루기", () => {
   it("신화: 발작 중에 계속 누르면 지고, 그때만 멈추고 연타하면 잡는다", () => {
     const p = tugParams("mythic", 0, () => 0.5)!;
     expect(p.frenzy).toHaveLength(3);
-    expect(play(p, 8)).toBe(false);
-    expect(play(p, 8, true)).toBe(true);
+    expect(play(p, 7)).toBe(false);
+    expect(play(p, 7, true)).toBe(true);
   });
 });

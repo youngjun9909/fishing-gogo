@@ -96,9 +96,10 @@ export interface Bait {
   desc: string;
 }
 export const BAITS: Bait[] = [
-  { id: "bait-worm", name: "지렁이 미끼", price: 50, pack: 10, desc: "쓰면 1분 동안 입질이 두 배 빨리 와요 (기다리는 시간 -50%)" },
-  { id: "bait-glitter", name: "반짝이 미끼", price: 120, pack: 5, desc: "쓰면 1분 동안 입질이 아주 빨리 와요 (기다리는 시간 -70%)" },
-  { id: "bait-gold", name: "황금 미끼", price: 250, pack: 1, desc: "쓰면 1분 동안 던지자마자 거의 바로 입질이 와요 (기다리는 시간 -90%)" },
+  { id: "bait-worm", name: "지렁이 미끼", price: 50, pack: 1, desc: "쓰면 1분 동안 입질이 조금 빨리 와요 (기다리는 시간 -10%)" },
+  { id: "bait-plain", name: "그냥 미끼", price: 150, pack: 1, desc: "쓰면 1분 동안 입질이 빨리 와요 (기다리는 시간 -30%)" },
+  { id: "bait-glitter", name: "반짝이 미끼", price: 300, pack: 1, desc: "쓰면 1분 동안 입질이 아주 빨리 와요 (기다리는 시간 -50%)" },
+  { id: "bait-gold", name: "황금 미끼", price: 500, pack: 1, desc: "쓰면 1분 동안 입질이 가장 빨리 와요 (기다리는 시간 -70%)" },
 ]
 export const MAX_BAIT = 99;
 /** 미끼 한 개를 쓰면 이 시간 동안 효과가 이어진다 */
@@ -110,7 +111,7 @@ export function baitById(id: string | null | undefined): Bait | undefined {
 
 /** 미끼 효과: 입질까지 기다리는 시간만 줄인다(물고기 등급 확률은 낚싯대가 정한다) */
 export function baitEffects(id: string | null | undefined) {
-  return { waitMul: id === "bait-worm" ? 0.5 : id === "bait-glitter" ? 0.3 : id === "bait-gold" ? 0.1 : 1 };
+  return { waitMul: { "bait-worm": 0.9, "bait-plain": 0.7, "bait-glitter": 0.5, "bait-gold": 0.3 }[id ?? ""] ?? 1 };
 }
 
 export function itemById(id: string): ShopItem | undefined {

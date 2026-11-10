@@ -183,7 +183,7 @@ button { cursor: pointer; }
 .emote small { position: absolute; bottom: -2px; right: 2px; font-size: 11px; color: var(--ink-soft); }
 .emote:disabled { opacity: 0.35; }
 .hint-bar { position: absolute; bottom: 82px; left: 50%; transform: translateX(-50%); font-size: 16px; background: rgba(255,255,255,0.85); padding: 6px 16px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
-.npc-talk { position: absolute; bottom: 130px; left: 50%; transform: translateX(-50%); pointer-events: auto; font-size: 17px; padding: 10px 20px; z-index: 6; }
+.npc-talk { position: absolute; bottom: 150px; left: 0; right: 0; margin: 0 auto; width: max-content; max-width: 94vw; pointer-events: auto; font-size: 17px; padding: 10px 20px; z-index: 6; }
 
 .charge { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); width: min(320px, 70vw); height: 22px; background: rgba(255,255,255,0.9); border-radius: 999px; padding: 4px; box-shadow: var(--shadow); pointer-events: none; }
 .charge i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--mint), var(--sun), var(--pink-deep)); }
@@ -224,12 +224,16 @@ button { cursor: pointer; }
 .stick i { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px; border-radius: 50%; background: rgba(255,255,255,0.95); box-shadow: 0 4px 0 rgba(74,59,82,.2); }
 .fishbtn { position: absolute; right: 22px; bottom: 120px; width: 104px; height: 104px; border-radius: 50%; font-size: 22px; touch-action: none; }
 
-.invite { font-size: 20px; }
+.invite { font-size: 20px; white-space: nowrap; }
+.hud-toggle { display: none; }
 .rank-toggle { display: none; margin-bottom: 6px; }
 
 /* 좁은 화면(세로 휴대폰): 위는 작은 칩, 아래는 [채팅 → 안내 → 이모트] 순서로 위아래로 쌓는다 */
 @media (max-width: 720px) {
   .hud-tl { top: 8px; left: 8px; gap: 6px; max-width: calc(100vw - 124px); }
+  .hud-toggle { display: inline-block; }
+  .npc-talk { bottom: 322px; font-size: 15px; padding: 8px 14px; } /* 채팅창·조이스틱 위로 */
+  .hud-tl.closed .hud-fold { display: none !important; }
   .hud-tl .chip { font-size: 14px; padding: 4px 10px; }
   .invite { font-size: 15px; }
   .hud-tr { top: 8px; right: 8px; width: auto; max-width: 60vw; }
@@ -369,3 +373,48 @@ button { cursor: pointer; }
 .forge-buy { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin: 8px 0 4px; font-size: 13px; font-weight: 700; color: #e8d8c0; }
 .forge-buy button { border: 0; border-radius: 10px; padding: 6px 10px; font: inherit; font-size: 12px; background: #5b6cff; color: #fff; cursor: pointer; }
 .forge-buy button:disabled { opacity: 0.4; cursor: default; }
+
+/* 신화 힘겨루기: 걸린 순간 큰 안내, 발작 직전 3-2-1 */
+.mini.tug.mythic { border: 4px solid transparent; background: linear-gradient(#fffdf8, #fffdf8) padding-box, conic-gradient(from 0deg, #ff7aa8, #ffb070, #ffe070, #8aff9a, #7ad8ff, #b09aff, #ff7aa8) border-box; box-shadow: 0 0 30px 6px rgba(255, 150, 230, 0.5), var(--shadow); }
+.mini.tug.mythic .tugfill { background: linear-gradient(90deg, #ff7aa8, #ffe070, #8aff9a, #7ad8ff, #b09aff); }
+.mythic-intro { position: absolute; left: 50%; top: 30%; width: 100%; text-align: center; transform: translateX(-50%); pointer-events: none; z-index: 41; animation: mintro 1.4s ease-out forwards; }
+.mythic-intro b { display: block; font-size: clamp(40px, 11vw, 96px); background: linear-gradient(90deg, #ff4d8d, #ffb02e, #4be07a, #35b8ff, #9a6bff); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 3px #fff; paint-order: stroke fill; filter: drop-shadow(0 0 18px rgba(255, 140, 230, 0.9)); }
+.mythic-intro span { display: inline-block; margin-top: 6px; padding: 6px 16px; border-radius: 999px; background: rgba(74, 59, 82, 0.85); color: #fff; font-size: clamp(16px, 3.4vw, 24px); }
+@keyframes mintro { 0% { opacity: 0; transform: translateX(-50%) scale(0.3); } 14% { opacity: 1; transform: translateX(-50%) scale(1.25); } 28% { transform: translateX(-50%) scale(1); } 82% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(1.08); } }
+.frenzy-cd { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); pointer-events: none; z-index: 41; text-align: center; }
+.frenzy-cd b { display: block; font-size: clamp(110px, 26vw, 200px); line-height: 1; color: #ff3d5e; -webkit-text-stroke: 6px #fff; paint-order: stroke fill; text-shadow: 0 0 30px rgba(255, 60, 100, 0.8); animation: cdpop 0.5s ease-out; }
+.frenzy-cd span { display: inline-block; padding: 4px 14px; border-radius: 999px; background: #ff3d5e; color: #fff; font-size: clamp(16px, 3.4vw, 24px); }
+@keyframes cdpop { 0% { transform: scale(2.4); opacity: 0; } 30% { opacity: 1; } 100% { transform: scale(1); } }
+
+/* 대장간 창: 좁거나 낮은 화면에서는 줄여서 스크롤 없이 한 화면에 담는다 */
+.forge { overflow-x: hidden; max-height: 100dvh; }
+@media (max-width: 520px), (max-height: 780px) {
+  .forge-back { padding: 6px; }
+  .forge { padding: 8px 12px 10px; max-height: calc(100dvh - 12px); }
+  .forge-title { font-size: 17px; }
+  .forge-item { width: 72px; height: 72px; margin: 4px auto 2px; }
+  .forge-name { font-size: 15px; }
+  .forge-step { font-size: 14px; margin: 0 0 2px; }
+  .forge-stage { height: 128px; margin: 0 auto 2px; }
+  .forge-stage .orb { width: 92px; height: 92px; }
+  .forge-stage .orb .pct { font-size: 24px; }
+  .forge-stage .orb .lbl { font-size: 11px; }
+  .forge-stage .ring { width: 112px; height: 112px; }
+  .forge-stage .ring.b { width: 128px; height: 128px; }
+  .forge-stage .wing { top: 16px; width: 76px; height: 74px; }
+  .forge-stage .wing.l { left: calc(50% - 130px); }
+  .forge-stage .wing.r { left: calc(50% + 54px); }
+  .forge-mats { gap: 8px; margin: 2px 0 4px; }
+  .forge-mats .slot { width: 104px; padding: 4px 4px; }
+  .forge-mats .slot .ic { font-size: 20px; }
+  .forge-mats .slot .nm { font-size: 11px; }
+  .forge-mats .slot .ct { font-size: 13px; }
+  .forge-cost { display: none; } /* 위 재료 칸과 같은 내용이라 줄인다 */
+  .forge-fx { font-size: 12px; margin-bottom: 4px; }
+  .forge-hint { display: none; }
+  .forge-buy { margin: 4px 0 2px; font-size: 12px; gap: 4px; }
+  .forge-buy > span { flex-basis: 100%; }
+  .forge-go { width: 100%; padding: 9px 0; font-size: 16px; }
+  .forge-result .ricon { width: 84px; height: 84px; }
+  .forge-result .rtitle { font-size: 24px; margin-bottom: 6px; padding-bottom: 6px; }
+}
