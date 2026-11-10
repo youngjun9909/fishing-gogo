@@ -98,7 +98,7 @@ export interface Bait {
 export const BAITS: Bait[] = [
   { id: "bait-worm", name: "지렁이 미끼", price: 50, pack: 10, desc: "쓰면 1분 동안 입질이 두 배 빨리 와요 (기다리는 시간 -50%)" },
   { id: "bait-glitter", name: "반짝이 미끼", price: 120, pack: 5, desc: "쓰면 1분 동안 입질이 아주 빨리 와요 (기다리는 시간 -70%)" },
-  { id: "bait-gold", name: "황금 미끼", price: 600, pack: 1, desc: "쓰면 1분 동안 던지자마자 거의 바로 입질이 와요 (기다리는 시간 -90%)" },
+  { id: "bait-gold", name: "황금 미끼", price: 250, pack: 1, desc: "쓰면 1분 동안 던지자마자 거의 바로 입질이 와요 (기다리는 시간 -90%)" },
 ]
 export const MAX_BAIT = 99;
 /** 미끼 한 개를 쓰면 이 시간 동안 효과가 이어진다 */

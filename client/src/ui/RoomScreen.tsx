@@ -234,6 +234,7 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
             <span className="panel chip">👥 {players}/{MAX_PLAYERS}</span>
             <span className="panel chip">{clock.night ? "🌙 밤" : "☀️ 낮"} · {Math.ceil(clock.left / 60000)}분</span>
             <span className="panel chip">🪙 {profile.coins.toLocaleString()}</span>
+            <span className="panel chip">💎 {(profile.stones ?? 0).toLocaleString()}</span>
             <button className="btn small mint" onClick={() => { sfx.click(); setPanel("inventory"); }}>🎒 인벤토리</button>
             <button className="btn small ghost" onClick={leave}>나가기</button>
           </div>
