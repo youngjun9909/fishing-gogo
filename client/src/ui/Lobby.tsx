@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { BAITS, BASE_MAPS, CODEX_REWARDS, ITEMS, MAX_ROD, ROD_SELL_BONUS, RODS, SPECIES, codexSpeciesFor, itemById, rodEffects, rodLevelOf, sellPrice, speciesById } from "@fishing/shared";
+import { BAITS, BASE_MAPS, CODEX_REWARDS, ITEMS, MAX_ROD, ROD_SELL_BONUS, RODS, SPECIES, STONES_PER_FISH, codexSpeciesFor, itemById, rodEffects, rodLevelOf, sellPrice, speciesById } from "@fishing/shared";
 import type { Appearance, CatchRecord, CodexEntry, MapId, PlayerProfile, ShopItem } from "@fishing/shared";
 import { getAudio, setMuted, setVolume, sfx } from "../audio";
 import { api, auth } from "../net";
@@ -211,14 +211,16 @@ export function Inventory({ onClose, reload, rod, canSell = true }: { onClose: (
   const [list, refetch, loadError] = useFetch<CatchRecord[]>("/api/inventory");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState("");
-  const total = (list ?? []).filter((c) => sel.has(c.id)).reduce((a, c) => a + sellPrice(speciesById(c.speciesId)!, c.size, rod), 0);
+  const picked = (list ?? []).filter((c) => sel.has(c.id));
+  const total = picked.reduce((a, c) => a + sellPrice(speciesById(c.speciesId)!, c.size, rod), 0);
+  const stonesTotal = picked.reduce((a, c) => a + STONES_PER_FISH[speciesById(c.speciesId)!.rarity], 0);
   const sorted = [...(list ?? [])].sort((a, b) => b.caughtAt - a.caughtAt);
 
   const sell = async () => {
     try {
       const r = await api("/api/sell", { ids: [...sel] });
       sfx.success("rare");
-      setMsg(`${r.sold}마리를 팔아서 🪙 ${r.earned}을 벌었어요!`);
+      setMsg(`${r.sold}마리를 팔아서 🪙 ${r.earned}과 💎 강화석 ${r.stones}개를 받았어요!`);
       setSel(new Set());
       refetch();
       await reload();
@@ -233,7 +235,7 @@ export function Inventory({ onClose, reload, rod, canSell = true }: { onClose: (
         <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
           <button className="btn small ghost" onClick={() => setSel(new Set(sorted.map((c) => c.id)))}>모두 선택</button>
           <button className="btn small ghost" onClick={() => setSel(new Set())}>선택 해제</button>
-          <button className="btn small sun" disabled={!sel.size} onClick={sell}>선택한 {sel.size}마리 팔기 (🪙 {total})</button>
+          <button className="btn small sun" disabled={!sel.size} onClick={sell}>선택한 {sel.size}마리 팔기 (🪙 {total} · 💎 {stonesTotal})</button>
           <span className="hint">{msg}</span>
         </div>
       ) : (
@@ -256,7 +258,7 @@ export function Inventory({ onClose, reload, rod, canSell = true }: { onClose: (
             >
               <FishIcon sp={sp} size={92} />
               <div className="nm">{sp.name}</div>
-              <div className="sub">{c.size}cm · 🪙 {sellPrice(sp, c.size, rod)}</div>
+              <div className="sub">{c.size}cm · 🪙 {sellPrice(sp, c.size, rod)} · 💎 {STONES_PER_FISH[sp.rarity]}</div>
               <span className="badge" style={{ background: RARITY_COLOR[sp.rarity] }}>{RARITY_LABEL[sp.rarity]}</span>
             </button>
           );
@@ -312,7 +314,7 @@ const SLOT_NAME = { top: "상의", pants: "하의", shoes: "신발", aura: "오�
 const SLOT_EMOJI = { top: "👕", pants: "👖", shoes: "👟", aura: "✨" } as const;
 
 export function Shop({ onClose, profile, reload }: { onClose: () => void; profile: PlayerProfile; reload: () => Promise<void> }) {
-  const [slot, setSlot] = useState<ShopItem["slot"] | "rod" | "bait">("rod");
+  const [slot, setSlot] = useState<ShopItem["slot"] | "rod" | "bait">("bait"); // 낚싯대 강화는 대장장이에게서 한다
   const [pick, setPick] = useState<string | null>(null); // 미리 입어 볼 상품(null이면 지금 입은 그대로)
   const changeSlot = (s: ShopItem["slot"] | "rod" | "bait") => {
     setSlot(s);
@@ -330,11 +332,12 @@ export function Shop({ onClose, profile, reload }: { onClose: () => void; profil
     return { appearance: profile.appearance, equipped };
   }, [profile.appearance, profile.equipped, slot, pick]);
 
-  const act = async (fn: () => Promise<unknown>, ok: string) => {
+  const act = async (fn: () => Promise<unknown>, ok: string | ((r: any) => string)) => {
     try {
-      await fn();
-      sfx.success("rare");
-      setMsg(ok);
+      const r: any = await fn();
+      if (r?.success === false) sfx.fail();
+      else sfx.success("rare");
+      setMsg(typeof ok === "function" ? ok(r) : ok);
       await reload();
     } catch (e) {
       sfx.fail();
@@ -343,16 +346,14 @@ export function Shop({ onClose, profile, reload }: { onClose: () => void; profil
   };
 
   return (
-    <Modal title={`🛍️ 상점  🪙 ${profile.coins.toLocaleString()}`} onClose={onClose}>
+    <Modal title={`🛍️ 상점  🪙 ${profile.coins.toLocaleString()}  💎 ${(profile.stones ?? 0).toLocaleString()}`} onClose={onClose}>
       <div className="tabs">
-        <button className={`tab ${slot === "rod" ? "on" : ""}`} onClick={() => changeSlot("rod")}>🎣 낚싯대</button>
         <button className={`tab ${slot === "bait" ? "on" : ""}`} onClick={() => changeSlot("bait")}>🪱 미끼</button>
         {(["top", "pants", "shoes", "aura"] as const).map((s) => (
           <button key={s} className={`tab ${slot === s ? "on" : ""}`} onClick={() => changeSlot(s)}>{SLOT_EMOJI[s]} {SLOT_NAME[s]}</button>
         ))}
         <span className="hint" style={{ alignSelf: "center" }}>{msg}</span>
       </div>
-      {slot === "rod" && <RodTab profile={profile} act={act} />}
       {slot === "bait" && <BaitTab profile={profile} act={act} />}
       {slot !== "rod" && slot !== "bait" && <div className="shop-split">
         <div className="rod-view">
@@ -389,21 +390,8 @@ export function Shop({ onClose, profile, reload }: { onClose: () => void; profil
   );
 }
 
-/** 단계별 효과를 사람이 읽는 말로 */
-function rodEffectLines(level: number): string[] {
-  if (level === 0) return ["기본 낚싯대예요"];
-  const e = rodEffects(level);
-  return [
-    `던지는 거리 +${Math.round((e.castMul - 1) * 100)}%`,
-    `입질 기다리는 시간 -${Math.round((1 - e.waitMul) * 100)}%`,
-    `타이밍 칸 +${Math.round((e.zoneMul - 1) * 100)}%`,
-    `힘 ${Math.round(e.farPower * 100)}%만 줘도 멀리 던져요(희귀한 물고기가 사는 곳)`,
-    `물고기 판매가 +${Math.round(ROD_SELL_BONUS * level * 100)}%`,
-  ];
-}
-
 /** 모델(낚싯대·미끼)을 빙글빙글 돌려 보여 주는 작은 3D 화면 */
-function ModelPreview({ k, make, camZ, rotZ = 0 }: { k: string; make: () => { group: THREE.Group; update: (t: number, reeling: boolean) => void }; camZ: number; rotZ?: number }) {
+export function ModelPreview({ k, make, camZ, rotZ = 0 }: { k: string; make: () => { group: THREE.Group; update: (t: number, reeling: boolean) => void }; camZ: number; rotZ?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current!;
@@ -451,7 +439,7 @@ function ModelPreview({ k, make, camZ, rotZ = 0 }: { k: string; make: () => { gr
   return <div className="rod-preview" ref={ref} />;
 }
 
-const RodPreview = ({ level }: { level: number }) => <ModelPreview k={`rod${level}`} make={() => buildRod(level)} camZ={4.1} rotZ={0.5} />;
+export const RodPreview = ({ level }: { level: number }) => <ModelPreview k={`rod${level}`} make={() => buildRod(level)} camZ={4.1} rotZ={0.5} />;
 const BaitPreview = ({ id }: { id: string }) => <ModelPreview k={id} make={() => { const f = buildBait(id); return { group: f.group, update: (t) => f.update(t) }; }} camZ={3.6} />;
 
 /** 칸마다 잘 보이는 높이와 거리(캐릭터 키 약 2.6) */
@@ -508,43 +496,6 @@ function CharacterPreview({ look, slot }: { look: Look; slot: string }) {
   return <div className="rod-preview tall" ref={ref} />;
 }
 
-function RodTab({ profile, act }: { profile: PlayerProfile; act: (fn: () => Promise<unknown>, ok: string) => Promise<void> }) {
-  const mine = rodLevelOf(profile.equipped);
-  const next = mine < MAX_ROD ? mine + 1 : null;
-  const [view, setView] = useState(next ?? mine);
-  useEffect(() => setView(next ?? mine), [mine]); // 강화하면 다음 단계를 미리 보여 준다
-  const tier = RODS[view];
-  return (
-    <div className="rodtab">
-      <div className="rod-view">
-        <RodPreview level={view} />
-        <div className="nm" style={{ fontSize: 20 }}>{tier.name}</div>
-        <ul className="rod-fx">{rodEffectLines(view).map((l) => <li key={l}>{l}</li>)}</ul>
-      </div>
-      <div className="rod-list">
-        {RODS.map((r) => {
-          const state = r.level === mine ? "now" : r.level < mine ? "owned" : r.level === next ? "next" : "locked";
-          return (
-            <div key={r.level} className={`rod-row ${view === r.level ? "sel" : ""} ${state}`} onClick={() => setView(r.level)}>
-              <div>
-                <div className="nm">{r.level}단계 · {r.name}</div>
-                <div className="sub">{state === "now" ? "지금 쓰는 낚싯대" : state === "owned" ? "가지고 있어요" : state === "next" ? "다음 강화" : "앞 단계를 먼저 강화해요"}</div>
-              </div>
-              {state === "next" && (
-                <button className="btn small sun" disabled={profile.coins < r.price} onClick={(e) => { e.stopPropagation(); void act(() => api("/api/rod/upgrade", {}), `${r.name}로 강화했어요!`); }}>
-                  🪙 {r.price.toLocaleString()}
-                </button>
-              )}
-              {state === "now" && <span className="badge" style={{ background: "var(--mint-deep)" }}>사용 중</span>}
-            </div>
-          );
-        })}
-        <p className="hint">강화하면 줄을 던질 때 더 멀리 나가고, 입질이 빨리 오고, 타이밍 맞추기가 조금 쉬워져요. 효과는 모두에게 공정하도록 5단계에서도 약 30%예요.</p>
-      </div>
-    </div>
-  );
-}
-
 function BaitTab({ profile, act }: { profile: PlayerProfile; act: (fn: () => Promise<unknown>, ok: string) => Promise<void> }) {
   const [view, setView] = useState(BAITS[0].id);
   const bait = BAITS.find((b) => b.id === view) ?? BAITS[0];
@@ -553,7 +504,7 @@ function BaitTab({ profile, act }: { profile: PlayerProfile; act: (fn: () => Pro
       <div className="rod-view">
         <BaitPreview id={bait.id} />
         <div className="nm" style={{ fontSize: 20 }}>{bait.name}</div>
-        <ul className="rod-fx"><li>{bait.desc}</li><li>고르면 던질 때마다 1개 써요</li></ul>
+        <ul className="rod-fx"><li>{bait.desc}</li><li>방 안에서 누르면 한 개를 쓰고 1분 동안 이어져요</li></ul>
       </div>
       <div className="rod-list">
         {BAITS.map((b) => {
@@ -596,8 +547,8 @@ function Settings({ onClose, onLogout, reload }: { onClose: () => void; onLogout
       {auth.token?.startsWith("dev:") && (
         <div className="row">
           <button className="btn sun" onClick={async () => {
-            try { await api("/api/dev/grant", {}); await reload(); setDevMsg("돈 5000을 받았어요"); } catch (e) { setDevMsg(e instanceof Error ? e.message : ""); }
-          }}>🧪 개발용: 돈 5000 받기</button>
+            try { await api("/api/dev/grant", {}); await reload(); setDevMsg("돈 5000과 강화석 500을 받았어요"); } catch (e) { setDevMsg(e instanceof Error ? e.message : ""); }
+          }}>🧪 개발용: 돈 5000 + 강화석 500 받기</button>
           <p className="hint">{devMsg}</p>
         </div>
       )}

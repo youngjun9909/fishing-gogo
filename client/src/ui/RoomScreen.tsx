@@ -8,6 +8,7 @@ import { colyseus, inviteLink } from "../net";
 import { GameScene } from "../three/GameScene";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
 import { Inventory, Modal, Shop } from "./Lobby";
+import { Forge } from "./Forge";
 
 const BAIT_EMOJI: Record<string, string> = { "bait-worm": "🪱", "bait-glitter": "✨", "bait-gold": "👑" };
 
@@ -76,11 +77,12 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
   const [clock, setClock] = useState({ night: false, left: 0 });
   const [lost, setLost] = useState(false);
   // 미끼: 낚시할 때 쓸지, 어떤 미끼를 쓸지 여기서 고른다(처음엔 안 씀)
-  const [baitPick, setBaitPick] = useState<string | null>(null);
+  const [baitActive, setBaitActive] = useState<{ id: string; endAt: number } | null>(null); // 쓰는 중인 미끼와 끝나는 시각
+  const [baitTick, setBaitTick] = useState(0);
   const [baitCounts, setBaitCounts] = useState<Record<string, number>>(() => ({ ...(profile.baits ?? {}) }));
-  const baitPickRef = useRef<string | null>(null);
   // 창: 인벤토리는 보기만, 상인(NPC)에게 가면 팔기·상점 창을 열 수 있다
-  const [panel, setPanel] = useState<null | "inventory" | "npc" | "sell" | "shop">(null);
+  const [panel, setPanel] = useState<null | "inventory" | "npc" | "sell" | "shop" | "forge">(null);
+  const [smithNear, setSmithNear] = useState(false);
   const [npcNear, setNpcNear] = useState(false);
   const npcNearRef = useRef(false);
   useEffect(() => { setBaitCounts({ ...(profile.baits ?? {}) }); }, [profile.baits]);
@@ -95,11 +97,13 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
     const on = (t: string, f: (d: any) => void) => off.push(scene.bus.on(t, f));
     on("chat", (m) => setChat((c) => [...c.slice(-99), { id: ++chatId.current, name: m.name, text: m.text }]));
     on("ranking", setRank);
-    on("baitLeft", (m: { id: string | null; left: number; out?: string }) => {
-      if (m.out && baitPickRef.current === m.out) { setToast("미끼를 다 썼어요"); setTimeout(() => setToast(""), 2200); }
-      baitPickRef.current = m.id;
-      setBaitPick(m.id);
-      setBaitCounts((c) => (m.id ? { ...c, [m.id]: m.left } : m.out ? { ...c, [m.out]: 0 } : c));
+    on("baitLeft", (m: { id: string | null; left: number; ms?: number; out?: string }) => {
+      if (m.out) { setToast("미끼가 없어요"); setTimeout(() => setToast(""), 2200); setBaitCounts((c) => ({ ...c, [m.out!]: 0 })); return; }
+      if (m.id) {
+        setBaitCounts((c) => ({ ...c, [m.id!]: m.left }));
+        setBaitActive({ id: m.id, endAt: performance.now() + (m.ms ?? 60000) });
+        sfx.click();
+      }
     });
     on("toast", (t) => { setToast(t); setTimeout(() => setToast(""), 2200); sfx.fail(); });
     on("flash", () => { setFlash((n) => n + 1); setTimeout(() => setFlash(0), 1600); });
@@ -128,9 +132,12 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
     on("emoteKey", (i: number) => scene.emote(EMOTES[i]));
     on("npcNear", (n: boolean) => { npcNearRef.current = n; setNpcNear(n); if (!n) setPanel((p) => (p === "npc" || p === "sell" || p === "shop" ? null : p)); });
     on("npcKey", () => setPanel((p) => p ?? "npc"));
+    on("smithNear", (n: boolean) => { setSmithNear(n); if (!n) setPanel((p) => (p === "forge" ? null : p)); });
+    on("smithKey", () => setPanel((p) => p ?? "forge"));
 
     room.onMessage("welcome", (m: any) => { setCode(m.code); setMapId(m.mapId); });
     const tick = setInterval(() => {
+      setBaitTick((n) => n + 1);
       const players = room.state?.players;
       if (players) setPlayers(players.size);
       const now = scene.timeOfDayInfo();
@@ -230,21 +237,23 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
             <button className="btn small mint" onClick={() => { sfx.click(); setPanel("inventory"); }}>🎒 인벤토리</button>
             <button className="btn small ghost" onClick={leave}>나가기</button>
           </div>
-          {/* 미끼: 종류와 남은 개수가 늘 보이고, 누르면 그 미끼를 쓴다(다시 누르면 안 쓴다) */}
-          {(baitPick || Object.values(baitCounts).some((n) => n > 0)) && (
+          {/* 미끼: 누르면 한 개를 쓰고 1분 동안 입질이 빨라진다. 쓰는 중이면 남은 시간이 보인다 */}
+          {(baitActive || Object.values(baitCounts).some((n) => n > 0)) && (
             <div className="bait-row">
               {BAITS.map((b) => {
                 const n = baitCounts[b.id] ?? 0;
-                const on = baitPick === b.id;
+                const leftSec = baitActive?.id === b.id ? Math.max(0, Math.ceil((baitActive.endAt - performance.now()) / 1000)) : 0;
+                void baitTick;
                 return (
                   <button
                     key={b.id}
-                    className={`panel chip bait-chip ${on ? "on" : ""}`}
+                    className={`panel chip bait-chip ${leftSec > 0 ? "on" : ""}`}
                     disabled={n <= 0}
                     title={b.desc}
-                    onClick={() => { sfx.click(); room.send("bait", { id: on ? null : b.id }); }}
+                    onClick={() => { room.send("bait", { id: b.id }); }}
                   >
                     {BAIT_EMOJI[b.id]} {b.name.replace(" 미끼", "")} ×{n}
+                    {leftSec > 0 && <span className="left">⏱ {Math.floor(leftSec / 60)}:{String(leftSec % 60).padStart(2, "0")}</span>}
                   </button>
                 );
               })}
@@ -304,7 +313,10 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
         {mini && <Minigame mini={mini} />}
         {tug && <Tug tug={tug} bumpRef={bumpRef} onPull={() => sceneRef.current?.actionDown()} />}
         {!result && <div className="hint-bar">{hint}</div>}
-        {npcNear && !panel && (
+        {smithNear && !panel && (
+          <button className="btn sun npc-talk forge-talk" onClick={() => { sfx.click(); setPanel("forge"); }}>🔨 대장장이와 이야기하기 {isTouch ? "" : "(E)"}</button>
+        )}
+        {npcNear && !smithNear && !panel && (
           <button className="btn sun npc-talk" onClick={() => { sfx.click(); setPanel("npc"); }}>🧑‍🌾 상인 아저씨와 이야기하기 {isTouch ? "" : "(E)"}</button>
         )}
 
@@ -322,6 +334,7 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
         {result && <CatchCard result={result} onClose={() => setResult(null)} />}
       </div>
       {panel === "inventory" && <Inventory onClose={() => setPanel(null)} reload={afterChange} rod={rodLevelOf(profile.equipped)} canSell={false} />}
+      {panel === "forge" && <Forge profile={profile} reload={afterChange} onClose={() => setPanel(null)} />}
       {panel === "sell" && <Inventory onClose={() => setPanel("npc")} reload={afterChange} rod={rodLevelOf(profile.equipped)} />}
       {panel === "shop" && <Shop onClose={() => setPanel("npc")} profile={profile} reload={afterChange} />}
       {panel === "npc" && (

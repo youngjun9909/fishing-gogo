@@ -25,10 +25,12 @@ export class SupabaseStore implements PlayerStore {
     return (text ? JSON.parse(text) : null) as T;
   }
 
+  // shortcut: 강화석은 새 열을 만들지 않으려고 baits 열 안의 "_stone" 키에 같이 저장한다, 열을 추가하면 정식 열로 옮긴다
   private fromRow(r: any): PlayerProfile {
+    const { _stone, ...baits } = (r.baits ?? {}) as Record<string, number>;
     return {
       id: r.id, nickname: r.nickname, appearance: r.appearance, coins: r.coins,
-      ownedItems: r.owned_items, equipped: r.equipped, titles: r.titles, claimedRewards: r.claimed_rewards, baits: r.baits ?? {},
+      ownedItems: r.owned_items, equipped: r.equipped, titles: r.titles, claimedRewards: r.claimed_rewards, baits, stones: _stone ?? 0,
     };
   }
 
@@ -43,7 +45,7 @@ export class SupabaseStore implements PlayerStore {
       prefer: "resolution=merge-duplicates",
       body: JSON.stringify({
         id: p.id, nickname: p.nickname, appearance: p.appearance, coins: p.coins,
-        owned_items: p.ownedItems, equipped: p.equipped, titles: p.titles, claimed_rewards: p.claimedRewards, baits: p.baits ?? {},
+        owned_items: p.ownedItems, equipped: p.equipped, titles: p.titles, claimed_rewards: p.claimedRewards, baits: { ...(p.baits ?? {}), _stone: p.stones ?? 0 },
       }),
     });
   }

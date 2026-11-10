@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { Room } from "colyseus.js";
 import { BASE_MAPS, speciesById } from "@fishing/shared";
 import type { MapDef, MapId } from "@fishing/shared";
@@ -130,7 +131,8 @@ export class GameScene {
   private resultAt = -1e9;
   /** 한 번 쓰고 끝나는 연출들. true를 돌려주는 동안 계속 돌아간다 */
   private fx: Array<(dt: number) => boolean> = [];
-  private npc: { rig: CharacterRig; pos: THREE.Vector3; near: boolean } | null = null;
+  private npc: { rig: CharacterRig | null; body: THREE.Group; pos: THREE.Vector3; near: boolean } | null = null;
+  private smith: { rig: CharacterRig | null; body: THREE.Group; pos: THREE.Vector3; near: boolean } | null = null;
 
   constructor(
     private container: HTMLElement,
@@ -147,24 +149,41 @@ export class GameScene {
     this.loop();
   }
 
-  /** 상인 NPC: 시작 지점 옆 작은 가판대에 서 있다. 가까이 가면 "npcNear"로 알린다 */
+  /** NPC 두 명: 상인(판매·상점)과 대장장이(낚싯대 강화). 시작 지점 양옆 작은 가판대에 서 있고, 가까이 가면 "npcNear"·"smithNear"로 알린다 */
   private buildNpc() {
+    this.npc = this.makeNpc({ dx: 5.5, dz: -2, name: "상인 아저씨", sub: "🛍️ 판매 · 상점", awning: 0xe0566a, forge: false, hair: 1, hairColor: 2, model: "/models/merchant.glb" });
+    this.smith = this.makeNpc({ dx: -5.5, dz: -2, name: "대장장이 영감", sub: "🔨 낚싯대 강화", awning: 0x4a4f5a, forge: true, hair: 2, hairColor: 6, model: "/models/blacksmith.glb", arm: { x: 0.2, y: 0.5, fade: [0.58, 0.62] } });
+  }
+
+  private makeNpc(o: { dx: number; dz: number; name: string; sub: string; awning: number; forge: boolean; hair: number; hairColor: number; model?: string; arm?: ArmPose }) {
     const sp = this.map.spawn;
-    const pos = new THREE.Vector3(sp.x + 5.5, 0, sp.z - 2);
-    const rig = new CharacterRig({
-      appearance: { eyes: 0, nose: 1, mouth: 0, hair: 1, skinColor: 0, hairColor: 2, eyeColor: 1, body: 1, gender: 1 },
+    const pos = new THREE.Vector3(sp.x + o.dx, 0, sp.z + o.dz);
+    // model이 있으면 그 3D 모델이 NPC 몸이 되고, 없으면 꾸미기용 캐릭터를 쓴다
+    const rig = o.model ? null : new CharacterRig({
+      appearance: { eyes: 0, nose: 1, mouth: 0, hair: o.hair, skinColor: 0, hairColor: o.hairColor, eyeColor: 1, body: 1, gender: 1 },
       equipped: { top: "top-hoodie" },
     });
-    rig.root.position.copy(pos);
-    this.scene.add(rig.root);
-    const tag = textSprite("상인 아저씨", { bg: "rgba(74,59,82,0.72)", fg: "#ffffff", size: 28, sub: "🛍️ 판매 · 상점", subFg: "#ffd45a", compact: true });
+    const root: THREE.Object3D = rig ? rig.root : new THREE.Group();
+    root.position.copy(pos);
+    this.scene.add(root);
+    const tag = textSprite(o.name, { bg: "rgba(74,59,82,0.72)", fg: "#ffffff", size: 28, sub: o.sub, subFg: "#ffd45a", compact: true });
     tag.position.set(0, 3.0 + tag.scale.y / 2, 0);
-    rig.root.add(tag);
-    // 가판대: 나무 받침 + 붉은 차양
-    const wood = new THREE.MeshToonMaterial({ color: 0xb07a45 });
+    root.add(tag);
+    const body = new THREE.Group(); // 플레이어 쪽으로 몸을 돌릴 때 이 그룹을 돌린다
+    root.add(body);
+    if (o.model) {
+      new GLTFLoader().loadAsync(o.model).then((g) => {
+        lowerArms(g.scene, o.arm);
+        const h = new THREE.Box3().setFromObject(g.scene).getSize(new THREE.Vector3()).y || 1;
+        g.scene.scale.setScalar(2.6 / h); // 플레이어 캐릭터와 비슷한 키
+        body.add(g.scene);
+      }).catch(() => {});
+    }
+    // 가판대: 받침 + 차양(대장장이는 돌 받침 위에 모루와 불씨)
+    const wood = new THREE.MeshToonMaterial({ color: o.forge ? 0x6a6f7a : 0xb07a45 });
     const counter = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.8, 0.7), wood);
     counter.position.set(pos.x, 0.4, pos.z + 1.2);
-    const awning = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.12, 1.6), new THREE.MeshToonMaterial({ color: 0xe0566a }));
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.12, 1.6), new THREE.MeshToonMaterial({ color: o.awning }));
     awning.position.set(pos.x, 3.5, pos.z + 0.2);
     awning.rotation.x = 0.18;
     const poles = [-1.4, 1.4].map((dx) => {
@@ -172,10 +191,24 @@ export class GameScene {
       m.position.set(pos.x + dx, 1.75, pos.z - 0.5);
       return m;
     });
-    const box = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.45, 0.45), new THREE.MeshToonMaterial({ color: 0xf2c94c }));
-    box.position.set(pos.x - 0.7, 1.02, pos.z + 1.2);
-    this.scene.add(counter, awning, box, ...poles);
-    this.npc = { rig, pos, near: false };
+    this.scene.add(counter, awning, ...poles);
+    if (o.forge) {
+      const anvil = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.35, 0.5), new THREE.MeshToonMaterial({ color: 0x2a2d36 }));
+      anvil.position.set(pos.x - 0.6, 1.0, pos.z + 1.2);
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 8), new THREE.MeshToonMaterial({ color: 0x2a2d36 }));
+      horn.rotation.z = Math.PI / 2;
+      horn.position.set(pos.x - 1.15, 1.05, pos.z + 1.2);
+      const coal = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.22, 0.45), new THREE.MeshBasicMaterial({ color: 0xff7a1a }));
+      coal.position.set(pos.x + 0.7, 0.9, pos.z + 1.2);
+      const glow = new THREE.PointLight(0xff8a30, 6, 6);
+      glow.position.set(pos.x + 0.7, 1.4, pos.z + 1.2);
+      this.scene.add(anvil, horn, coal, glow);
+    } else {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.45, 0.45), new THREE.MeshToonMaterial({ color: 0xf2c94c }));
+      box.position.set(pos.x - 0.7, 1.02, pos.z + 1.2);
+      this.scene.add(box);
+    }
+    return { rig, body, pos, near: false };
   }
 
   setServerNow(serverNow: number) {
@@ -198,6 +231,7 @@ export class GameScene {
       }
       if (/^[1-5]$/.test(k) && !e.repeat) this.bus.emit("emoteKey", Number(k) - 1);
       if (k === "e" && this.tugging) { if (!e.repeat) this.pull(); } // 꾹 누르기로는 안 되고 직접 연타해야 한다
+      else if (k === "e" && !e.repeat && this.smith?.near) this.bus.emit("smithKey", true);
       else if (k === "e" && !e.repeat && this.npc?.near) this.bus.emit("npcKey", true);
       if (k === "escape" || k === "c") this.cancel();
     };
@@ -755,13 +789,16 @@ export class GameScene {
   }
 
   private updateNpc(dt: number) {
-    const n = this.npc;
     const mine = this.peers.get(this.mySession)?.rig.root.position;
-    if (!n) return;
-    const dx = mine ? mine.x - n.pos.x : 0, dz = mine ? mine.z - n.pos.z : 1;
-    const near = !!mine && Math.hypot(dx, dz) < 4.5;
-    if (near !== n.near) { n.near = near; this.bus.emit("npcNear", near); }
-    n.rig.update(dt, { moving: false, fishing: "idle" }, near ? Math.atan2(dx, dz) : 0);
+    for (const [n, ev] of [[this.npc, "npcNear"], [this.smith, "smithNear"]] as const) {
+      if (!n) continue;
+      const dx = mine ? mine.x - n.pos.x : 0, dz = mine ? mine.z - n.pos.z : 1;
+      const near = !!mine && Math.hypot(dx, dz) < 4.5;
+      if (near !== n.near) { n.near = near; this.bus.emit(ev, near); }
+      const face = near ? Math.atan2(dx, dz) : 0;
+      if (n.rig) n.rig.update(dt, { moving: false, fishing: "idle" }, face);
+      else n.body.rotation.y += Math.atan2(Math.sin(face - n.body.rotation.y), Math.cos(face - n.body.rotation.y)) * Math.min(1, dt * 6);
+    }
   }
 
   private updateCamera(dt: number) {
@@ -819,7 +856,36 @@ export class GameScene {
     cancelAnimationFrame(this.raf);
     this.disposers.forEach((d) => d());
     for (const id of [...this.peers.keys()]) this.removePeer(id);
-    this.npc?.rig.dispose();
+    this.npc?.rig?.dispose();
+    this.smith?.rig?.dispose();
     this.engine.dispose();
   }
+}
+
+/** 모델이 T자(팔 벌림)로 만들어져 있어서, 어깨 쪽을 축으로 팔 부분 정점만 아래로 돌려 팔을 내린다(뼈대 없는 모델용) */
+/** 어깨 위치(x는 몸 가운데에서 어깨까지 거리)와, 팔 위쪽 경계(이 높이 위는 머리·모자라 그대로 둔다) */
+interface ArmPose { x: number; y: number; fade: [number, number] }
+function lowerArms(root: THREE.Object3D, pose: ArmPose = { x: 0.15, y: 0.45, fade: [0.5, 0.55] }) {
+  const ss = (a: number, b: number, v: number) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const SHOULDER_X = pose.x, SHOULDER_Y = pose.y, DOWN = 1.3; // 모델 높이 1 기준, 약 75도
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const pos = m.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const nor = m.geometry.getAttribute("normal") as THREE.BufferAttribute | undefined;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i);
+      const w = ss(SHOULDER_X, SHOULDER_X + 0.09, Math.abs(x)) * (1 - ss(pose.fade[0], pose.fade[1], y)); // 몸통·모자는 그대로, 팔만
+      if (w <= 0) continue;
+      const side = Math.sign(x);
+      const a = -side * DOWN * w, c = Math.cos(a), s = Math.sin(a);
+      const dx = x - side * SHOULDER_X, dy = y - SHOULDER_Y;
+      pos.setXY(i, side * SHOULDER_X + dx * c - dy * s, SHOULDER_Y + dx * s + dy * c);
+      if (nor) { const nx = nor.getX(i), ny = nor.getY(i); nor.setXY(i, nx * c - ny * s, nx * s + ny * c); }
+    }
+    pos.needsUpdate = true;
+    if (nor) nor.needsUpdate = true;
+    m.geometry.computeBoundingBox();
+    m.geometry.computeBoundingSphere();
+  });
 }

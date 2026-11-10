@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, SPECIES, baitEffects, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf, sellPrice, inFrenzy, tugDecay, tugParams, tugPull } from "@fishing/shared";
+import { BAIT_DURATION_MS, CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, ROD_SELL_BONUS, STONES_PER_FISH, SPECIES, baitEffects, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf, sellPrice, inFrenzy, tugDecay, tugParams, tugPull } from "@fishing/shared";
 import { matchMaker } from "@colyseus/core";
 import { hasBadWord } from "../src/chat";
 import { startHarness, until, waitMessage } from "./harness";
@@ -192,7 +192,7 @@ describe("낚시", () => {
     const dist = (c: any) => Math.hypot(me(c).bobX - me(c).x, me(c).bobZ - me(c).z);
     const bites = clients.map((c) => waitMessage(c, "bite"));
     for (const c of clients) cast(c);
-    await Promise.all(bites);
+    const biteMsgs = await Promise.all(bites);
     const eff = rodEffects(MAX_ROD);
     expect(dist(clients[0])).toBeCloseTo(castDistance(0.3), 1);
     expect(dist(clients[1])).toBeCloseTo(castDistance(0.3) * eff.castMul, 1);
@@ -201,7 +201,10 @@ describe("낚시", () => {
       c.send("hook");
       zones.push((await waitMessage(c, "minigame")).zoneWidth);
     }
-    expect(zones[1] / zones[0]).toBeCloseTo(eff.zoneMul, 2);
+    // 등급 가중치가 달라 걸리는 물고기가 다를 수 있으니, 물고기별 칸 폭에 단계 배율을 곱한 값이 와야 한다
+    const want = (i: number, mul: number) => Math.min(0.9, SPECIES.find((x) => x.id === biteMsgs[i].speciesId)!.zoneWidth * mul);
+    expect(zones[0]).toBeCloseTo(want(0, 1), 5);
+    expect(zones[1]).toBeCloseTo(want(1, eff.zoneMul), 5);
   });
 
   it("입질 알림 뒤에 반응하지 않으면 놓친다", async () => {
@@ -310,10 +313,10 @@ describe("경제와 도감", () => {
     expect(await h.service.codex("a")).toHaveLength(1);
   });
 
-  it("낚싯대 단계마다 판매가가 5%씩 늘어난다", () => {
+  it("낚싯대 단계마다 판매가가 2.5%씩 늘어난다", () => {
     const sp = SPECIES.find((s) => s.id === "common-01")!;
     const base = sellPrice(sp, 30);
-    expect(sellPrice(sp, 30, MAX_ROD)).toBe(Math.round(base * (1 + 0.05 * MAX_ROD)));
+    expect(sellPrice(sp, 30, MAX_ROD)).toBe(Math.round(base * (1 + ROD_SELL_BONUS * MAX_ROD)));
     expect(sellPrice(sp, 30, 1)).toBeGreaterThanOrEqual(base);
   });
 
@@ -346,16 +349,54 @@ describe("경제와 도감", () => {
     expect(p.equipped).toEqual({ top: "top-hoodie", pants: "pants-jeans" });
   });
 
-  it("낚싯대는 한 단계씩 코인으로 올리고, 돈이 모자라거나 끝 단계면 거절한다", async () => {
+  it("대장장이에게서 강화석을 한 개 300코인에 산다. 돈이 모자라거나 개수가 이상하면 거절한다", async () => {
     const p0 = await h.service.ensureProfile("a");
+    await h.store.saveProfile({ ...p0, coins: 1000, stones: 5 });
+    const p = await h.service.buyStones("a", 3);
+    expect(p.coins).toBe(100);
+    expect(p.stones).toBe(8);
+    await expect(h.service.buyStones("a", 1)).rejects.toThrow("돈이 부족");
+    await expect(h.service.buyStones("a", 0)).rejects.toThrow("개수");
+    await expect(h.service.buyStones("a", 1.5)).rejects.toThrow("개수");
+  });
+
+  it("낚싯대 강화는 강화석과 코인을 쓰고 확률로 성공한다(실패하면 재료와 코인만 사라진다). 부족하거나 끝 단계면 거절한다", async () => {
+    const p0 = await h.service.ensureProfile("a");
+    await expect(h.service.upgradeRod("a")).rejects.toThrow("강화석이 부족");
+    await h.store.saveProfile({ ...p0, stones: 100000, coins: 10 });
     await expect(h.service.upgradeRod("a")).rejects.toThrow("돈이 부족");
-    await h.store.saveProfile({ ...p0, coins: 200000 });
-    const p1 = await h.service.upgradeRod("a");
-    expect(rodLevelOf(p1.equipped)).toBe(1);
-    expect(p1.coins).toBe(200000 - RODS[1].price);
+    await h.store.saveProfile({ ...p0, stones: 100000, coins: 10_000_000 });
+    h.service.rng = () => 0; // 성공
+    const s1 = await h.service.upgradeRod("a");
+    expect(s1.success).toBe(true);
+    expect(rodLevelOf(s1.profile.equipped)).toBe(1);
+    expect(s1.profile.coins).toBe(10_000_000 - RODS[1].coins);
+    h.service.rng = () => 0.999; // 실패: 단계는 그대로이고 재료와 코인만 사라진다
+    const f = await h.service.upgradeRod("a");
+    expect(f.success).toBe(false);
+    expect(rodLevelOf(f.profile.equipped)).toBe(1);
+    expect(f.profile.stones).toBe(100000 - RODS[1].cost - RODS[2].cost);
+    expect(f.profile.coins).toBe(10_000_000 - RODS[1].coins - RODS[2].coins);
+    expect(f.spent).toEqual({ stones: RODS[2].cost, coins: RODS[2].coins });
+    h.service.rng = () => 0;
     for (let i = 2; i <= MAX_ROD; i++) await h.service.upgradeRod("a");
     await expect(h.service.upgradeRod("a")).rejects.toThrow("가장 좋은");
     expect(rodLevelOf((await h.service.profile("a"))!.equipped)).toBe(MAX_ROD);
+    h.service.rng = Math.random;
+  });
+
+  it("물고기를 팔 때마다 등급별로 강화석을 준다", async () => {
+    await h.service.ensureProfile("a");
+    const common = SPECIES.find((s) => s.rarity === "common")!, myth = SPECIES.find((s) => s.rarity === "mythic")!;
+    const r1 = await h.service.recordCatch("a", common.id, 20, "lake");
+    const r2 = await h.service.recordCatch("a", myth.id, 100, "lake");
+    const sold = await h.service.sell("a", [r1.record.id, r2.record.id]);
+    expect(sold.stones).toBe(STONES_PER_FISH.common + STONES_PER_FISH.mythic);
+    // 같은 종을 또 잡아 팔아도 매번 받는다(도감에 처음 올릴 때 한 번만이 아니다)
+    const r3 = await h.service.recordCatch("a", common.id, 20, "lake");
+    const again = await h.service.sell("a", [r3.record.id]);
+    expect(again.stones).toBe(STONES_PER_FISH.common);
+    expect((await h.service.profile("a"))!.stones).toBe(STONES_PER_FISH.common * 2 + STONES_PER_FISH.mythic);
   });
 
   it("낚싯대 칸은 입기·벗기로 바꿀 수 없다(단계가 사라지지 않게)", async () => {
@@ -385,30 +426,25 @@ describe("경제와 도감", () => {
     expect(await h.service.consumeBait("a", "bait-worm")).toEqual({ id: null, left: 0 });
   });
 
-  it("반짝이는 희귀 이상을 더 잘 뽑고, 황금은 일반을 막고 매우 희귀·전설을 크게 늘린다", () => {
-    const share = (id: string | null) => {
-      const bias = baitEffects(id).bias;
-      let rare = 0, vr = 0, leg = 0, common = 0;
-      for (let i = 0; i < 4000; i++) {
-        const sp = pickSpecies(() => (i + 0.5) / 4000, "lake", "night", "far", bias)!;
-        if (sp.rarity === "common") common++;
-        else if (sp.rarity === "rare") rare++;
-        else if (sp.rarity === "veryRare") vr++;
-        else leg++;
-      }
-      return { common: common / 4000, rare: rare / 4000, vr: vr / 4000, leg: leg / 4000 };
+  it("미끼는 입질 시간만 줄이고, 등급 확률은 낚싯대 단계가 높일 뿐 상한이 있다", () => {
+    expect(baitEffects(null).waitMul).toBe(1);
+    expect(baitEffects("bait-worm").waitMul).toBeGreaterThan(baitEffects("bait-glitter").waitMul);
+    expect(baitEffects("bait-glitter").waitMul).toBeGreaterThan(baitEffects("bait-gold").waitMul);
+    const legShare = (level: number) => {
+      const bias = rodEffects(level).bias;
+      let leg = 0;
+      for (let i = 0; i < 4000; i++) if (pickSpecies(() => (i + 0.5) / 4000, "lake", "night", "far", bias)!.rarity === "legendary") leg++;
+      return leg / 4000;
     };
-    const none = share(null), glitter = share("bait-glitter"), gold = share("bait-gold");
-    expect(glitter.common).toBeLessThan(none.common);
-    expect(glitter.leg).toBeGreaterThan(none.leg * 1.5);
-    expect(gold.common).toBe(0); // 황금은 일반이 절대 안 나온다
-    expect(gold.leg).toBeGreaterThan(none.leg * 8); // 밤에 멀리 던지면 전설이 8배 넘게 나온다
-    expect(gold.vr).toBeGreaterThan(gold.leg);
-    // 일반만 사는 곳이라도 후보가 없어 멈추지 않는다(배율 없이 뽑는다)
-    expect(pickSpecies(() => 0.5, "lake", "day", "near", baitEffects("bait-gold").bias)).not.toBeNull();
+    expect(legShare(MAX_ROD)).toBeGreaterThan(legShare(0) * 4);
+    expect(legShare(MAX_ROD)).toBeLessThan(legShare(0) * 8.5); // 전설 배율 8 상한
+    expect(rodEffects(MAX_ROD).bias.legendary).toBe(8);
+    expect(rodEffects(MAX_ROD).bias.mythic).toBe(16.86);
+    expect(rodEffects(4).bias.legendary - rodEffects(3).bias.legendary).toBeGreaterThan(rodEffects(3).bias.legendary - rodEffects(2).bias.legendary); // 구간이 바뀌면 크게 뛴다
+    expect(rodEffects(0).bias.common).toBe(1);
   });
 
-  it("방 안에서 고른 미끼만 던질 때 쓰고, 안 고르면 안 쓴다. 없는 미끼는 고를 수 없다", async () => {
+  it("미끼는 쓰면 한 개가 줄고 1분 동안 이어진다. 없는 미끼는 쓸 수 없다", async () => {
     await h.service.ensureProfile("plain");
     const gold = await h.service.ensureProfile("gold");
     await h.store.saveProfile({ ...gold, baits: { "bait-gold": 2 } });
@@ -417,33 +453,21 @@ describe("경제와 도감", () => {
     const refused = waitMessage(clients[0], "baitLeft");
     clients[0].send("bait", { id: "bait-gold" });
     expect(await refused).toMatchObject({ id: null, out: "bait-gold" });
-    // 가진 미끼를 고르면 개수를 알려 준다
-    const chosen = waitMessage(clients[1], "baitLeft");
-    clients[1].send("bait", { id: "bait-gold" });
-    expect(await chosen).toEqual({ id: "bait-gold", left: 2 });
-    // 던질 때 하나 쓴다
+    // 쓰면 한 개가 줄고 지속 시간을 알려 준다
     const used = waitMessage(clients[1], "baitLeft");
+    clients[1].send("bait", { id: "bait-gold" });
+    expect(await used).toEqual({ id: "bait-gold", left: 1, ms: BAIT_DURATION_MS });
+    // 던져도 더 줄지 않는다(던질 때마다 쓰는 게 아니라 쓴 뒤 1분 동안 이어진다)
     const bites = clients.map((c) => waitMessage(c, "bite"));
     for (const c of clients) c.send("cast", { power: 0.3, yaw: Math.PI });
-    expect(await used).toEqual({ id: "bait-gold", left: 1 });
     await Promise.all(bites);
-    const zones: number[] = [];
-    for (const c of clients) {
-      c.send("hook");
-      zones.push((await waitMessage(c, "minigame")).zoneWidth);
-    }
-    // 황금은 일반을 막으니 다른 물고기가 걸린다. 그 물고기 칸 폭의 +15%가 와야 한다
-    const sp = pickSpecies(() => 0, "lake", "day", "near", baitEffects("bait-gold").bias)!;
-    expect(sp.rarity).not.toBe("common");
-    expect(zones[1]).toBeCloseTo(sp.zoneWidth * 1.15, 5);
     expect((await h.service.profile("gold"))!.baits["bait-gold"]).toBe(1);
     expect((await h.service.profile("plain"))!.baits["bait-gold"]).toBeUndefined();
   });
 
-  it("낚싯대 단계가 높을수록 멀리 던지고 기다림이 짧고 타이밍 칸이 넓다", () => {
+  it("낚싯대 단계가 높을수록 멀리 던지고 타이밍 칸이 넓다", () => {
     const lo = rodEffects(0), hi = rodEffects(MAX_ROD);
     expect(hi.castMul).toBeGreaterThan(lo.castMul);
-    expect(hi.waitMul).toBeLessThan(lo.waitMul);
     expect(hi.zoneMul).toBeGreaterThan(lo.zoneMul);
     expect(hi.farPower).toBeLessThan(lo.farPower);
   });

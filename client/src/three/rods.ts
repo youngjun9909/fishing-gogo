@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { puff } from "./auras";
 
 /**
- * 낚싯대 6단계(0 나무 ~ 5 전설). 단계가 오를수록 재질, 릴, 줄 걸이, 빛 효과가 화려해진다.
+ * 낚싯대 11단계(0 나무 ~ 10 전설). 단계가 오를수록 재질, 릴, 줄 걸이, 빛 효과가 화려해진다.
  * 좌표: 손잡이 쪽 끝이 y=-1.1, 끝(줄 나가는 쪽)이 y=+1.1, 길이 2.2. 줄 걸이와 릴은 아래쪽(+z)에 매단다.
  * update(t, reeling)는 매 프레임 부른다(t 초, reeling은 릴을 감는 중인지).
  */
@@ -335,7 +335,212 @@ function legendRod(): RodFx {
   };
 }
 
+function steelRod(): RodFx {
+  const g = new THREE.Group();
+  const steel = std("#aab4c4", { metalness: 0.9, roughness: 0.22, emissive: "#3a4150", emissiveIntensity: 0.4 });
+  const dark = std("#2a2f3a", { metalness: 0.8, roughness: 0.3, emissive: "#14171d", emissiveIntensity: 0.5 });
+  const orange = std("#ff8a2a", { roughness: 0.35, emissive: "#a8480a", emissiveIntensity: 0.55 });
+  g.add(lathe(steel, 0.16, 1, R, 30));
+  for (const u of [0.24, 0.34, 0.45, 0.56, 0.66, 0.75, 0.83, 0.9, 0.96]) {
+    g.add(band(dark, u, 0.0085, 0.003));
+    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.012, 6), orange); // 이음새의 볼트
+    bolt.position.set(0, tt(u + 0.02), R(u + 0.02) + 0.004);
+    bolt.rotation.x = Math.PI / 2;
+    g.add(bolt);
+  }
+  g.add(grip(std("#1b1e26", { roughness: 0.55 }), orange, 5));
+  for (let i = 0; i < 4; i++) g.add(band(steel, 0.04 + i * 0.045, 0.007, 0.015));
+  for (const u of [0.34, 0.48, 0.6, 0.72, 0.83, 0.92]) g.add(guide(steel, u, dark));
+  g.add(tipLoop(steel));
+  const r = reel({ body: dark, spool: steel, handle: orange, size: 1.15, gem: orange });
+  g.add(r.group);
+  return { group: g, update: (t, reeling) => { if (reeling) r.crank.rotation.y = t * 18; } };
+}
+
+function silverRod(): RodFx {
+  const g = new THREE.Group();
+  const silver = std("#eef3ff", { metalness: 0.85, roughness: 0.14, emissive: "#8ab4ff", emissiveIntensity: 0.38 });
+  const ice = std("#9ad8ff", { roughness: 0.12, emissive: "#4aa8ff", emissiveIntensity: 0.9 });
+  const navy = std("#1d2c58", { roughness: 0.4, emissive: "#101a3a", emissiveIntensity: 0.5 });
+  g.add(lathe(silver, 0.16, 1, R, 30));
+  // 대를 감싸며 오르는 푸른 빛 고리(나선처럼)
+  for (let i = 0; i < 12; i++) {
+    const u = 0.22 + i * 0.062;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(R(u) + 0.004, 0.0035, 6, 18), glowMat(0x7ac8ff, 0.8));
+    ring.rotation.x = Math.PI / 2 + Math.sin(i) * 0.25;
+    ring.position.y = tt(u);
+    g.add(ring);
+  }
+  g.add(grip(navy, silver, 5));
+  for (const u of [0.34, 0.47, 0.59, 0.7, 0.8, 0.89, 0.96]) g.add(guide(silver, u, ice));
+  g.add(tipLoop(silver));
+  const r = reel({ body: silver, spool: navy, handle: silver, size: 1.15, gem: ice });
+  g.add(r.group);
+  const sparks = Array.from({ length: 8 }, (_, i) => { const sp = puff(0xcfeaff, 0.09); g.add(sp); return { sp, off: i / 8 }; });
+  return {
+    group: g,
+    update: (t, reeling) => {
+      if (reeling) r.crank.rotation.y = t * 18;
+      for (const p of sparks) {
+        const k = (p.off + t * 0.3) % 1;
+        p.sp.position.set(Math.sin(t * 2.4 + p.off * 17) * 0.05, tt(k), R(k) + 0.03);
+        (p.sp.material as THREE.SpriteMaterial).opacity = Math.sin(k * Math.PI);
+      }
+    },
+  };
+}
+
+function platinumRod(): RodFx {
+  const g = new THREE.Group();
+  const plat = std("#f6f8fc", { metalness: 0.95, roughness: 0.1, emissive: "#aab4c8", emissiveIntensity: 0.35 });
+  const trim = std("#c8d0e0", { metalness: 0.9, roughness: 0.2, emissive: "#6a748a", emissiveIntensity: 0.4 });
+  const diamond = std("#ffffff", { roughness: 0.02, emissive: "#d8f0ff", emissiveIntensity: 1 });
+  const sapphire = std("#3a6aff", { roughness: 0.1, emissive: "#1c3ad8", emissiveIntensity: 0.9 });
+  const leather = std("#1c2650", { roughness: 0.65, emissive: "#0c1230", emissiveIntensity: 0.4 });
+  g.add(lathe(plat, 0.15, 1, (u) => R(u) * 1.06, 32));
+  for (const u of [0.22, 0.32, 0.43, 0.54, 0.64, 0.73, 0.81, 0.88, 0.94]) {
+    g.add(band(trim, u, 0.0095, 0.004));
+    g.add(band(trim, u + 0.014, 0.004, 0.004));
+  }
+  for (const u of [0.28, 0.48, 0.68, 0.86]) { // 보석 박음
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.022), u > 0.6 ? diamond : sapphire);
+    gem.position.set(0, tt(u), R(u) + 0.014);
+    g.add(gem);
+  }
+  g.add(grip(leather, plat, 6));
+  for (let i = 0; i < 3; i++) g.add(band(sapphire, 0.05 + i * 0.07, 0.006, 0.016));
+  for (const u of [0.34, 0.47, 0.59, 0.7, 0.8, 0.89, 0.96]) g.add(guide(plat, u, sapphire));
+  g.add(tipLoop(plat));
+  const r = reel({ body: plat, spool: leather, handle: plat, size: 1.25, gem: diamond });
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.008, 6, 28), trim);
+  halo.rotation.x = Math.PI / 2;
+  halo.position.set(0, 0.07, 0.07);
+  r.group.add(halo);
+  g.add(r.group);
+  const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.035), new THREE.MeshBasicMaterial({ color: "#ffffff", fog: false, toneMapped: false }));
+  star.position.set(0, tt(1) + 0.09, 0);
+  g.add(star);
+  return {
+    group: g,
+    update: (t, reeling) => {
+      if (reeling) r.crank.rotation.y = t * 18;
+      star.rotation.y = t * 2;
+      star.scale.setScalar(0.85 + 0.25 * Math.sin(t * 5));
+    },
+  };
+}
+
+function dragonRod(): RodFx {
+  const g = new THREE.Group();
+  const jade = std("#14a89a", { metalness: 0.45, roughness: 0.22, emissive: "#0a6a62", emissiveIntensity: 0.6 });
+  const gold = std("#ffcf4a", { metalness: 0.6, roughness: 0.22, emissive: "#9a6a0a", emissiveIntensity: 0.6 });
+  const coral = std("#ff6a5a", { roughness: 0.3, emissive: "#a8281a", emissiveIntensity: 0.6 });
+  const pearl = std("#ffffff", { roughness: 0.08, emissive: "#d8f8ff", emissiveIntensity: 0.9 });
+  g.add(lathe(jade, 0.16, 1, R, 32));
+  for (const u of [0.24, 0.34, 0.45, 0.55, 0.64, 0.72, 0.8, 0.87, 0.93]) { // 용 비늘 같은 금 마디
+    g.add(band(gold, u, 0.0095, 0.004));
+    const scale = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.03, 5), gold);
+    scale.position.set(0, tt(u + 0.025), R(u + 0.025) + 0.012);
+    scale.rotation.x = -Math.PI / 2.6;
+    g.add(scale);
+  }
+  g.add(grip(coral, gold, 6));
+  for (let i = 0; i < 3; i++) g.add(band(gold, 0.05 + i * 0.07, 0.007, 0.016));
+  for (const u of [0.34, 0.47, 0.59, 0.7, 0.8, 0.89, 0.96]) g.add(guide(gold, u, coral));
+  // 끝: 용의 뿔 두 개와 여의주
+  for (const sd of [-1, 1]) {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.09, 6), gold);
+    horn.position.set(sd * 0.018, tt(1) + 0.05, 0);
+    horn.rotation.z = -sd * 0.5;
+    g.add(horn);
+  }
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.028, 14, 10), pearl);
+  orb.position.set(0, tt(1) + 0.065, 0);
+  g.add(orb);
+  const orbGlow = puff(0xbff4ff, 0.2);
+  orbGlow.position.copy(orb.position);
+  g.add(orbGlow);
+  const r = reel({ body: gold, spool: jade, handle: gold, size: 1.2, gem: coral });
+  g.add(r.group);
+  const bubbles = Array.from({ length: 9 }, (_, i) => { const sp = puff(0x9ff0ff, 0.08); g.add(sp); return { sp, off: i / 9 }; });
+  return {
+    group: g,
+    update: (t, reeling) => {
+      if (reeling) r.crank.rotation.y = t * 18;
+      orb.position.y = tt(1) + 0.065 + Math.sin(t * 3) * 0.012;
+      orbGlow.position.copy(orb.position);
+      (orbGlow.material as THREE.SpriteMaterial).opacity = 0.6 + 0.4 * Math.sin(t * 4);
+      for (const p of bubbles) {
+        const k = (p.off + t * 0.28) % 1;
+        p.sp.position.set(Math.sin(t * 2 + p.off * 21) * 0.05, tt(0.3 + k * 0.7), R(0.3 + k * 0.7) + 0.03);
+        (p.sp.material as THREE.SpriteMaterial).opacity = Math.sin(k * Math.PI);
+      }
+    },
+  };
+}
+
+function starRod(): RodFx {
+  const g = new THREE.Group();
+  const night = std("#1a1f5a", { metalness: 0.5, roughness: 0.2, emissive: "#2a2fa0", emissiveIntensity: 0.8 });
+  const violet = std("#8a5aff", { roughness: 0.25, emissive: "#5a2ad8", emissiveIntensity: 0.8 });
+  const starlight = std("#fff6c8", { roughness: 0.1, emissive: "#ffe27a", emissiveIntensity: 1 });
+  g.add(lathe(night, 0.16, 1, R, 32));
+  const stars: THREE.Mesh[] = [];
+  for (let i = 0; i < 16; i++) { // 대에 박힌 별 알갱이
+    const u = 0.2 + i * 0.05;
+    const st = new THREE.Mesh(new THREE.OctahedronGeometry(0.011), starlight);
+    st.position.set(Math.sin(i * 2.1) * (R(u) + 0.004), tt(u), Math.cos(i * 2.1) * (R(u) + 0.004));
+    g.add(st);
+    stars.push(st);
+  }
+  for (const u of [0.3, 0.52, 0.72, 0.88]) g.add(band(violet, u, 0.008, 0.003));
+  g.add(grip(std("#2a1a6a", { roughness: 0.55, emissive: "#180e44", emissiveIntensity: 0.6 }), violet, 6));
+  for (const u of [0.34, 0.47, 0.59, 0.7, 0.8, 0.89, 0.96]) g.add(guide(violet, u, starlight));
+  const tipStar = new THREE.Mesh(new THREE.OctahedronGeometry(0.04), new THREE.MeshBasicMaterial({ color: "#fff3b0", fog: false, toneMapped: false }));
+  tipStar.position.set(0, tt(1) + 0.1, 0);
+  g.add(tipStar);
+  const tipGlow = puff(0xfff0b0, 0.28);
+  tipGlow.position.copy(tipStar.position);
+  g.add(tipGlow);
+  // 릴: 초승달 모양 고리와 별
+  const moon = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.02, 8, 24, Math.PI * 1.5), std("#ffe9a0", { metalness: 0.6, roughness: 0.2, emissive: "#c8981a", emissiveIntensity: 0.7 }));
+  const reelG = new THREE.Group();
+  reelG.position.set(0, tt(0.3), R(0.3) + 0.1);
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.065, 14, 10), night);
+  reelG.add(core, moon);
+  g.add(reelG);
+  const trail = Array.from({ length: 14 }, (_, i) => { const sp = puff(i % 2 ? 0xfff6c8 : 0xb09aff, 0.08); g.add(sp); return { sp, off: i / 14 }; });
+  return {
+    group: g,
+    update: (t, reeling) => {
+      moon.rotation.z = t * (reeling ? 9 : 0.6);
+      tipStar.rotation.y = t * 1.8;
+      tipStar.rotation.x = t * 1.1;
+      tipStar.scale.setScalar(0.85 + 0.3 * Math.sin(t * 4));
+      (tipGlow.material as THREE.SpriteMaterial).opacity = 0.6 + 0.4 * Math.sin(t * 3.2);
+      stars.forEach((st, i) => st.scale.setScalar(0.7 + 0.6 * Math.max(0, Math.sin(t * 3 + i))));
+      for (const p of trail) {
+        const k = (p.off + t * 0.35) % 1;
+        p.sp.position.set(Math.sin(t * 2 + p.off * 19) * 0.06, tt(0.25 + k * 0.75), R(0.25 + k * 0.75) + 0.03);
+        (p.sp.material as THREE.SpriteMaterial).opacity = Math.sin(k * Math.PI);
+      }
+    },
+  };
+}
+
 export function buildRod(level: number): RodFx {
-  const fx = level <= 1 ? basicRod(level) : level === 2 ? glassRod() : level === 3 ? carbonRod() : level === 4 ? goldRod() : legendRod();
-  return fx;
+  // 강화 단계(0~10)마다 이름에 맞는 모양이 따로 있다: 나무·대나무·유리섬유·카본·강철·은빛·황금·백금·용왕·별빛·전설
+  switch (level) {
+    case 0: return basicRod(0);
+    case 1: return basicRod(1);
+    case 2: return glassRod();
+    case 3: return carbonRod();
+    case 4: return steelRod();
+    case 5: return silverRod();
+    case 6: return goldRod();
+    case 7: return platinumRod();
+    case 8: return dragonRod();
+    case 9: return starRod();
+    default: return legendRod();
+  }
 }

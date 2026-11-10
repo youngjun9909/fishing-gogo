@@ -49,6 +49,8 @@ export interface PlayerProfile {
   claimedRewards: string[];
   /** 가진 미끼 개수(미끼 id → 개수). 쓸지는 방 안에서 낚시할 때 고른다 */
   baits: Record<string, number>;
+  /** 낚싯대 강화에 쓰는 강화석(물고기를 팔 때 등급별로 받는다) */
+  stones: number;
 }
 
 export interface CatchRecord {

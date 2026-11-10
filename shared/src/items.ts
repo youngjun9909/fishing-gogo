@@ -27,40 +27,61 @@ export const ITEMS: ShopItem[] = [
   { id: "aura-legend", name: "전설의 낚시꾼 오라", slot: "aura", price: 0, purchasable: false },
 ];
 
-// ---- 낚싯대: 코인으로 한 단계씩 강화한다. 단계는 입은 것(equipped) 안의 "rod" 값으로 저장한다 ----
+// ---- 낚싯대: 대장장이에게서 강화석과 코인으로 강화한다(확률로 성공, 실패하면 재료와 코인만 사라진다). 단계는 입은 것(equipped) 안의 "rod" 값으로 저장한다 ----
 export interface RodTier {
   level: number;
   name: string;
-  /** 이 단계로 올리는 데 드는 코인(0단계는 기본) */
-  price: number;
+  /** 이 단계로 올리는 시도 한 번에 드는 강화석(0단계는 기본) */
+  cost: number;
+  /** 시도 한 번에 드는 코인 */
+  coins: number;
+  /** 강화 성공 확률(0~1) */
+  rate: number;
 }
-export const RODS: RodTier[] = [
-  { level: 0, name: "나무 낚싯대", price: 0 },
-  { level: 1, name: "대나무 낚싯대", price: 2000 },
-  { level: 2, name: "유리섬유 낚싯대", price: 6000 },
-  { level: 3, name: "카본 낚싯대", price: 15000 },
-  { level: 4, name: "황금 낚싯대", price: 35000 },
-  { level: 5, name: "전설의 낚싯대", price: 80000 },
-];
+const ROD_NAMES = ["나무", "대나무", "유리섬유", "카본", "강철", "은빛", "황금", "백금", "용왕", "별빛", "전설의"];
+const ROD_COST = [0, 50, 65, 80, 100, 150, 220, 300, 380, 500, 720];
+const ROD_COINS = [0, 1000, 1500, 3000, 4000, 4500, 5000, 5800, 6800, 8600, 12000];
+const ROD_RATE = [1, 0.85, 0.7, 0.55, 0.45, 0.35, 0.28, 0.2, 0.12, 0.08, 0.05];
+export const RODS: RodTier[] = ROD_NAMES.map((n, level) => ({ level, name: `${n} 낚싯대`, cost: ROD_COST[level], coins: ROD_COINS[level], rate: ROD_RATE[level] }));
 export const MAX_ROD = RODS.length - 1;
+
+/** 대장장이에게서 강화석 한 개를 사는 값 */
+export const STONE_PRICE = 300;
+export const MAX_STONE_BUY = 1000; // 한 번에 살 수 있는 최대 개수
+
+/** 물고기를 팔 때마다(한 마리당) 받는 강화석: 등급이 높을수록 많다 */
+export const STONES_PER_FISH: Record<"common" | "rare" | "veryRare" | "legendary" | "mythic", number> = { common: 1, rare: 3, veryRare: 8, legendary: 25, mythic: 100 };
 
 export function rodLevelOf(equipped: Record<string, string> | undefined): number {
   const n = Number(equipped?.rod ?? 0);
   return Number.isInteger(n) && n >= 0 && n <= MAX_ROD ? n : 0;
 }
 
-/** 단계별 효과. 같은 방에서 겨루니 차이가 너무 커지지 않게 5단계에서도 약 30%로 둔다 */
+/**
+ * 단계별 효과. 등급 가중치(bias)는 단계가 오를수록 희귀 이상이 잘 나오게 하되 상한을 둔다
+ * 구간(0~3 / 4~7 / 8~9 / 10)마다 확 좋아지고, 구간 안에서는 조금씩만 오른다.
+ * 10단계: 희귀 x3, 매우 희귀 x6.5, 전설 x8, 신화 x16.86(맵 평균 신화 약 1%).
+ */
+const ROD_TIER = [0, 0.03, 0.06, 0.09, 0.22, 0.26, 0.3, 0.34, 0.55, 0.63, 1];
+const bias = (max: number, l: number) => Math.round((1 + (max - 1) * ROD_TIER[l]) * 100) / 100;
+
 export function rodEffects(level: number) {
   const l = Math.min(MAX_ROD, Math.max(0, level));
   return {
     /** 던지는 거리 배율 */
-    castMul: 1 + 0.06 * l,
-    /** 입질까지 기다리는 시간 배율(작을수록 빠름) */
-    waitMul: 1 - 0.06 * l,
+    castMul: 1 + 0.04 * l,
     /** 타이밍 바 성공 칸 폭 배율 */
-    zoneMul: 1 + 0.05 * l,
+    zoneMul: 1 + 0.03 * l,
     /** 이 힘 이상으로 던지면 "멀리" (낮을수록 쉬움) */
-    farPower: 0.55 - 0.04 * l,
+    farPower: 0.55 - 0.03 * l,
+    /** 등급별 가중치 배율 */
+    bias: {
+      common: 1,
+      rare: bias(3, l),
+      veryRare: bias(6.5, l),
+      legendary: bias(8, l),
+      mythic: bias(16.86, l),
+    },
   };
 }
 
@@ -75,29 +96,21 @@ export interface Bait {
   desc: string;
 }
 export const BAITS: Bait[] = [
-  { id: "bait-worm", name: "지렁이 미끼", price: 50, pack: 10, desc: "입질이 빨리 와요 (기다리는 시간 -30%)" },
-  { id: "bait-glitter", name: "반짝이 미끼", price: 120, pack: 5, desc: "희귀 이상 물고기가 약 1.7배 잘 물려요" },
-  { id: "bait-gold", name: "황금 미끼", price: 600, pack: 1, desc: "일반은 안 나와요! 희귀 이상만, 밤에 멀리 던지면 매우 희귀 약 24%·전설 약 9%, 타이밍 칸 +15%" },
+  { id: "bait-worm", name: "지렁이 미끼", price: 50, pack: 10, desc: "쓰면 1분 동안 입질이 두 배 빨리 와요 (기다리는 시간 -50%)" },
+  { id: "bait-glitter", name: "반짝이 미끼", price: 120, pack: 5, desc: "쓰면 1분 동안 입질이 아주 빨리 와요 (기다리는 시간 -70%)" },
+  { id: "bait-gold", name: "황금 미끼", price: 600, pack: 1, desc: "쓰면 1분 동안 던지자마자 거의 바로 입질이 와요 (기다리는 시간 -90%)" },
 ]
 export const MAX_BAIT = 99;
+/** 미끼 한 개를 쓰면 이 시간 동안 효과가 이어진다 */
+export const BAIT_DURATION_MS = 60_000;
 
 export function baitById(id: string | null | undefined): Bait | undefined {
   return BAITS.find((b) => b.id === id);
 }
 
-/** 미끼 효과. 미끼가 없으면 모두 1(배율 없음) */
+/** 미끼 효과: 입질까지 기다리는 시간만 줄인다(물고기 등급 확률은 낚싯대가 정한다) */
 export function baitEffects(id: string | null | undefined) {
-  return {
-    waitMul: id === "bait-worm" ? 0.7 : 1,
-    /** 등급별 가중치 배율: 반짝이는 희귀 이상 2배, 황금은 일반을 막고 매우 희귀 2배, 전설 3배 */
-    bias:
-      id === "bait-glitter"
-        ? { common: 1, rare: 2, veryRare: 2, legendary: 2, mythic: 1 }
-        : id === "bait-gold"
-          ? { common: 0, rare: 1, veryRare: 2, legendary: 3, mythic: 2 }
-          : { common: 1, rare: 1, veryRare: 1, legendary: 1, mythic: 1 },
-    zoneMul: id === "bait-gold" ? 1.15 : 1,
-  };
+  return { waitMul: id === "bait-worm" ? 0.5 : id === "bait-glitter" ? 0.3 : id === "bait-gold" ? 0.1 : 1 };
 }
 
 export function itemById(id: string): ShopItem | undefined {

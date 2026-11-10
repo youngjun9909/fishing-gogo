@@ -2,7 +2,7 @@ import { Client, Room, matchMaker } from "@colyseus/core";
 import { MapSchema, Schema, type } from "@colyseus/schema";
 import {
   BASE_MAPS, BITE_WINDOW_MS, MAX_PLAYERS, MINIGAME_TIMEOUT_MS, RECONNECT_SECONDS, WAIT_MAX_MS,
-  WAIT_MIN_MS, baitById, baitEffects, castDistance, rodEffects, rodLevelOf, cursorAt, cursorSpeed, isBaseMap, isRareOrBetter, judge, pickSpecies,
+  BAIT_DURATION_MS, WAIT_MIN_MS, baitById, baitEffects, castDistance, rodEffects, rodLevelOf, cursorAt, cursorSpeed, isBaseMap, isRareOrBetter, judge, pickSpecies,
   reachOf, rollSize, sellPrice, speciesById, timeOfDay, TUG_MIN_GAP_MS, tugDecay, tugParams, tugPull,
 } from "@fishing/shared";
 import type { FishSpecies, MapDef, MapId, TugParams } from "@fishing/shared";
@@ -92,10 +92,13 @@ export function createFishingRoom(deps: RoomDeps) {
     private map!: MapDef;
     private fishing = new Map<string, Fishing>();
     private limiters = new Map<string, ChatLimiter>();
+    /** 순위는 사람(playerId) 기준 누적: 나갔다 들어와도 한 줄이다 */
     private scores = new Map<string, Score>();
+    private sessionOf = new Map<string, string>();
     private names = new Map<string, string>();
     private rods = new Map<string, number>(); // 접속한 사람의 낚싯대 단계
-    private baitPick = new Map<string, string | null>(); // 낚시할 때 쓰기로 고른 미끼(없으면 안 씀)
+    /** 쓴 미끼의 효과가 이어지는 동안(밀리초 시각)의 미끼. 던질 때 아직 안 끝났으면 그 효과를 받는다 */
+    private baitBuff = new Map<string, { id: string; until: number }>();
 
     async onCreate(options: { map?: string; ownerId?: string; title?: string; isPublic?: boolean }) {
       const mapId = options.map ?? "lake";
@@ -156,6 +159,7 @@ export function createFishingRoom(deps: RoomDeps) {
       p.z = this.map.spawn.z;
       this.state.players.set(client.sessionId, p);
       this.names.set(client.sessionId, profile.nickname);
+      this.sessionOf.set(profile.id, client.sessionId);
       this.rods.set(client.sessionId, rodLevelOf(profile.equipped));
       this.limiters.set(client.sessionId, new ChatLimiter());
       if (!this.state.hostId) this.state.hostId = client.sessionId;
@@ -266,39 +270,24 @@ export function createFishingRoom(deps: RoomDeps) {
       p.fishing = "waiting";
       const state: Fishing = { phase: "waiting", reach: reachOf(power, eff.farPower), eff, bait: baitEffects(null) };
       this.fishing.set(client.sessionId, state);
-      // 고른 미끼는 던지는 순간 1개 쓴다. 그 사이에 거두거나 나갔으면 타이머를 걸지 않는다
-      const pick = this.baitPick.get(client.sessionId) ?? null;
-      const none = { id: null as string | null, left: 0 };
-      const used = pick ? await deps.service.consumeBait(p.playerId, pick).catch(() => none) : none;
-      if (this.fishing.get(client.sessionId) !== state) return;
-      if (used.id) {
-        state.bait = baitEffects(used.id);
-        client.send("baitLeft", used);
-      } else if (pick) {
-        this.baitPick.set(client.sessionId, null); // 다 썼다
-        client.send("baitLeft", { ...none, out: pick });
-      }
-      state.timer = this.clock.setTimeout(() => this.bite(client.sessionId), deps.waitMs() * eff.waitMul * state.bait.waitMul);
+      // 쓴 미끼의 효과가 아직 이어지고 있으면 입질이 빨라진다
+      const buff = this.baitBuff.get(client.sessionId);
+      if (buff && buff.until > deps.now()) state.bait = baitEffects(buff.id);
+      state.timer = this.clock.setTimeout(() => this.bite(client.sessionId), deps.waitMs() * state.bait.waitMul);
     }
 
-    /** 낚시할 때 쓸 미끼를 고른다(id가 없으면 안 쓴다). 가진 개수가 없으면 거절한다 */
+    /** 미끼를 쓴다: 한 개를 쓰고 1분 동안 입질이 빨라진다(없으면 거절, 이미 쓰는 중이면 새로 1분) */
     private async handleBait(client: Client, m: { id?: string | null }) {
       const p = this.player(client);
-      if (!p) return;
       const id = m?.id ?? null;
-      if (id === null) {
-        this.baitPick.set(client.sessionId, null);
-        client.send("baitLeft", { id: null, left: 0 });
-        return;
-      }
-      const left = (await deps.service.profile(p.playerId))?.baits?.[id] ?? 0;
-      if (!baitById(id) || left <= 0) {
-        this.baitPick.set(client.sessionId, null);
+      if (!p || !id) return;
+      const used = baitById(id) ? await deps.service.consumeBait(p.playerId, id).catch(() => null) : null;
+      if (!used?.id) {
         client.send("baitLeft", { id: null, left: 0, out: id });
         return;
       }
-      this.baitPick.set(client.sessionId, id);
-      client.send("baitLeft", { id, left });
+      this.baitBuff.set(client.sessionId, { id, until: deps.now() + BAIT_DURATION_MS });
+      client.send("baitLeft", { id, left: used.left, ms: BAIT_DURATION_MS });
     }
 
     /** 기다리는 중이거나 입질 중일 때 낚싯줄을 거둔다 */
@@ -311,7 +300,7 @@ export function createFishingRoom(deps: RoomDeps) {
       const f = this.fishing.get(sessionId);
       const p = this.state.players.get(sessionId);
       if (!f || !p || f.phase !== "waiting") return;
-      const species = pickSpecies(deps.rng, this.state.mapId as MapId, timeOfDay(deps.now()), f.reach, f.bait.bias);
+      const species = pickSpecies(deps.rng, this.state.mapId as MapId, timeOfDay(deps.now()), f.reach, f.eff.bias);
       if (!species) return this.cancelFishing(sessionId);
       f.species = species;
       f.phase = "bite";
@@ -330,7 +319,7 @@ export function createFishingRoom(deps: RoomDeps) {
       f.startedAt = deps.now();
       f.target = 0.15 + deps.rng() * 0.7;
       f.speed = cursorSpeed(f.species);
-      f.zone = Math.min(0.9, f.species.zoneWidth * f.eff.zoneMul * f.bait.zoneMul);
+      f.zone = Math.min(0.9, f.species.zoneWidth * f.eff.zoneMul);
       client.send("minigame", {
         target: f.target,
         zoneWidth: f.zone,
@@ -414,20 +403,23 @@ export function createFishingRoom(deps: RoomDeps) {
       }
     }
 
-    // 방 안 순위: 총 가치, 마릿수, 가장 큰 물고기. 그 방에서만 집계한다
+    // 방 안 순위: 총 가치, 마릿수, 가장 큰 물고기. 그 방에서만, 사람별로 누적해 집계한다
     private addScore(sessionId: string, species: FishSpecies, size: number, price: number) {
-      const s = this.scores.get(sessionId) ?? { value: 0, count: 0, biggest: null };
+      const pid = this.state.players.get(sessionId)?.playerId;
+      if (!pid) return;
+      const s = this.scores.get(pid) ?? { value: 0, count: 0, biggest: null };
       s.value += price;
       s.count += 1;
       if (!s.biggest || size > s.biggest.size) s.biggest = { speciesId: species.id, size };
-      this.scores.set(sessionId, s);
+      this.scores.set(pid, s);
       this.broadcastRanking();
     }
 
     private broadcastRanking() {
-      const rows = [...this.scores.entries()].map(([sid, s]) => ({
-        sessionId: sid, name: this.names.get(sid) ?? "", ...s,
-      }));
+      const rows = [...this.scores.entries()].map(([pid, s]) => {
+        const sid = this.sessionOf.get(pid) ?? pid;
+        return { sessionId: sid, name: this.names.get(sid) ?? "", ...s };
+      });
       this.broadcast("ranking", {
         value: [...rows].sort((a, b) => b.value - a.value),
         count: [...rows].sort((a, b) => b.count - a.count),

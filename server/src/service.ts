@@ -1,5 +1,5 @@
 import {
-  CODEX_REWARDS, EMOTES, ITEMS, MAX_CUSTOM_MAPS, MAX_BAIT, MAX_ROD, RODS, baitById, rodLevelOf, SECRET_EMOTES, codexRatio, itemById, sellPrice,
+  CODEX_REWARDS, EMOTES, ITEMS, MAX_CUSTOM_MAPS, MAX_BAIT, MAX_ROD, MAX_STONE_BUY, RODS, STONE_PRICE, STONES_PER_FISH, baitById, rodLevelOf, SECRET_EMOTES, codexRatio, itemById, sellPrice,
   speciesById,
 } from "@fishing/shared";
 import type { Appearance, CatchRecord, MapId, PlayerProfile } from "@fishing/shared";
@@ -29,6 +29,8 @@ export class GameService {
     private store: PlayerStore,
     private now: () => number = Date.now,
     private newId: () => string = () => crypto.randomUUID(),
+    /** 강화 성공 판정에 쓰는 난수(시험에서 값을 고정한다) */
+    public rng: () => number = Math.random,
   ) {}
 
   async profile(id: string): Promise<PlayerProfile | null> {
@@ -74,17 +76,20 @@ export class GameService {
     return this.store.getCodex(playerId);
   }
 
-  async sell(playerId: string, ids: string[]): Promise<{ earned: number; coins: number; sold: number }> {
+  async sell(playerId: string, ids: string[]): Promise<{ earned: number; stones: number; coins: number; totalStones: number; sold: number }> {
     const p = await this.mustProfile(playerId);
     const removed = await this.store.removeCatches(playerId, ids);
-    let earned = 0;
+    let earned = 0, stones = 0;
     for (const c of removed) {
       const sp = speciesById(c.speciesId);
-      if (sp) earned += sellPrice(sp, c.size, rodLevelOf(p.equipped));
+      if (!sp) continue;
+      earned += sellPrice(sp, c.size, rodLevelOf(p.equipped));
+      stones += STONES_PER_FISH[sp.rarity]; // 팔 때마다 등급별로 강화석을 준다
     }
     p.coins += earned;
+    p.stones = (p.stones ?? 0) + stones;
     await this.store.saveProfile(p);
-    return { earned, coins: p.coins, sold: removed.length };
+    return { earned, stones, coins: p.coins, totalStones: p.stones, sold: removed.length };
   }
 
   shop() {
@@ -104,14 +109,31 @@ export class GameService {
   }
 
   /** 낚싯대를 한 단계 올린다. 단계는 입은 것(equipped)의 "rod" 값으로 저장한다 */
-  async upgradeRod(playerId: string): Promise<PlayerProfile> {
+  /** 낚싯대 강화 1회: 강화석과 코인을 쓰고 확률로 한 단계 오른다(실패하면 재료와 코인만 사라진다) */
+  async upgradeRod(playerId: string): Promise<{ profile: PlayerProfile; success: boolean; spent: { stones: number; coins: number } }> {
     const p = await this.mustProfile(playerId);
     const level = rodLevelOf(p.equipped);
     if (level >= MAX_ROD) throw new Error("이미 가장 좋은 낚싯대예요");
     const next = RODS[level + 1];
-    if (p.coins < next.price) throw new Error("돈이 부족해요");
-    p.coins -= next.price;
-    p.equipped.rod = String(next.level);
+    p.stones ??= 0;
+    if (p.stones < next.cost) throw new Error("강화석이 부족해요");
+    if (p.coins < next.coins) throw new Error("돈이 부족해요");
+    p.stones -= next.cost;
+    p.coins -= next.coins;
+    const success = this.rng() < next.rate;
+    if (success) p.equipped.rod = String(next.level);
+    await this.store.saveProfile(p);
+    return { profile: p, success, spent: { stones: next.cost, coins: next.coins } };
+  }
+
+  /** 대장장이에게서 강화석을 코인으로 산다(한 개 STONE_PRICE) */
+  async buyStones(playerId: string, count: number): Promise<PlayerProfile> {
+    if (!Number.isInteger(count) || count < 1 || count > MAX_STONE_BUY) throw new Error("살 수 없는 개수예요");
+    const p = await this.mustProfile(playerId);
+    const cost = count * STONE_PRICE;
+    if (p.coins < cost) throw new Error("돈이 부족해요");
+    p.coins -= cost;
+    p.stones = (p.stones ?? 0) + count;
     await this.store.saveProfile(p);
     return p;
   }
@@ -160,6 +182,7 @@ export class GameService {
   async devGrant(playerId: string): Promise<PlayerProfile> {
     const p = await this.mustProfile(playerId);
     p.coins += 5000;
+    p.stones = (p.stones ?? 0) + 500;
     await this.store.saveProfile(p);
     return p;
   }

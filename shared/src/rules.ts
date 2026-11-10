@@ -24,8 +24,8 @@ export function isRareOrBetter(r: Rarity): boolean {
   return RARITY_ORDER.indexOf(r) >= RARITY_ORDER.indexOf("rare");
 }
 
-/** 낚싯대 한 단계마다 판매가 +5% */
-export const ROD_SELL_BONUS = 0.05;
+/** 낚싯대 한 단계마다 판매가 +2.5% */
+export const ROD_SELL_BONUS = 0.025;
 
 export function sellPrice(species: FishSpecies, size: number, rodLevel = 0): number {
   const avg = (species.minSize + species.maxSize) / 2;
@@ -106,7 +106,7 @@ export interface TugParams {
   frenzy: Array<[number, number]>;
 }
 export const TUG_MIN_GAP_MS = 80; // 초당 12번까지만 센다(자동 연타 방지)
-export const ROD_TUG_EASE = 0.06; // 낚싯대 한 단계마다 줄어드는 속도 6% 완화
+export const ROD_TUG_EASE = 0.04; // 낚싯대 한 단계마다 줄어드는 속도 4% 완화
 
 export function tugParams(rarity: Rarity, rodLevel: number, rng: () => number): TugParams | null {
   const ease = 1 - ROD_TUG_EASE * rodLevel;
