@@ -2,6 +2,7 @@ import { Server, matchMaker } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { createApi } from "./api";
 import { createAuthenticator } from "./auth";
+import { recentDiag, recordDiag } from "./diag";
 import { createFishingRoom, defaultDeps } from "./FishingRoom";
 import { GameService } from "./service";
 import { MemoryStore } from "./store";
@@ -29,6 +30,13 @@ export function createGameServer(deps: Deps, validateMap: (data: unknown) => str
       return;
     }
     // 관리자용: 비공개 방을 포함한 모든 방과 접속자 닉네임. 환경 변수 ADMIN_KEY를 아는 사람만 볼 수 있다(없으면 꺼짐)
+    if (path === "/admin/disconnects") {
+      const key = process.env.ADMIN_KEY;
+      const ok = !!key && new URL(req.url, "http://x").searchParams.get("key") === key;
+      if (!ok) return void res.writeHead(404).end();
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify(recentDiag()));
+      return;
+    }
     if (path === "/admin/rooms") {
       const key = process.env.ADMIN_KEY;
       const ok = !!key && new URL(req.url, "http://x").searchParams.get("key") === key;
@@ -63,6 +71,7 @@ if (process.argv[1]?.endsWith("index.ts")) {
   const authenticate = createAuthenticator(env);
   if (!(env.SUPABASE_URL && env.SUPABASE_ANON_KEY)) console.warn("카카오 로그인(Supabase) 설정이 없어서 개발용 로그인만 돼요.");
   if (env.ALLOW_DEV_LOGIN === "false" && !env.SUPABASE_URL) console.error("개발용 로그인을 껐는데 Supabase 설정도 없어서 아무도 접속할 수 없어요.");
+  recordDiag({ side: "server", event: "start" }); // 서버가 다시 켜진 시각: 이때 근처의 끊김은 서버 재시작 탓일 수 있다
   const server = createGameServer(defaultDeps({ service, authenticate }));
   const port = Number(env.PORT ?? 2567);
   server.listen(port).then(() => console.log(`game server on ${port}`));

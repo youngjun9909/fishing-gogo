@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { BAIT_DURATION_MS, CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, ROD_SELL_BONUS, STONES_PER_FISH, SPECIES, baitEffects, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf, sellPrice, inFrenzy, tugDecay, tugParams, tugPull } from "@fishing/shared";
+import { BAIT_DURATION_MS, CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, ROD_SELL_BONUS, STONES_PER_FISH, SPECIES, baitEffects, rarityOdds, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf, sellPrice, inFrenzy, tugDecay, tugParams, tugPull } from "@fishing/shared";
 import { matchMaker } from "@colyseus/core";
 import { hasBadWord } from "../src/chat";
 import { startHarness, until, waitMessage } from "./harness";
@@ -191,6 +191,24 @@ describe("낚시", () => {
     const rk = await ranking;
     expect(rk.count[0].name).toBe("낚시꾼");
     expect(rk.value[0].value).toBeGreaterThan(0);
+  });
+
+  it("통신이 0.3초 늦어도 내 화면 커서 기준으로 판정하고, 0.4초를 넘는 보정은 쓰지 않는다", async () => {
+    const run = async (lagMs: number) => {
+      const { clients } = await h.open(["alice"]);
+      const alice = clients[0];
+      const bite = waitMessage(alice, "bite");
+      cast(alice);
+      await bite;
+      alice.send("hook");
+      const mini = await waitMessage(alice, "minigame");
+      const result = waitMessage(alice, "result");
+      const t = (mini.target / 2 / mini.speed) * 1000;
+      h.clock.now += t + lagMs;
+      alice.send("reel", { e: t }); // 내 화면에서는 t에 눌렀지만 서버에는 lagMs 늦게 도착
+      return (await result).success;
+    };
+    expect(await run(300)).toBe(true);
   });
 
   it("낚싯대 단계가 높으면 더 멀리 던지고 타이밍 칸이 넓어진다", async () => {
@@ -414,6 +432,13 @@ describe("경제와 도감", () => {
     await expect(h.service.equip("a", "rod", null)).rejects.toThrow("강화로만");
   });
 
+  it("낚싯대 단계별 등급 확률: 합이 100%이고, 10단계 신화는 약 1%다", () => {
+    for (const l of [0, 5, 10]) expect(Object.values(rarityOdds(l)).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 6);
+    expect(rarityOdds(10).mythic).toBeGreaterThan(0.0095);
+    expect(rarityOdds(10).mythic).toBeLessThan(0.0105);
+    expect(rarityOdds(10).legendary).toBeGreaterThan(rarityOdds(5).legendary);
+  });
+
   it("미끼를 사면 묶음 개수만큼 늘고, 처음 산 미끼는 바로 골라진다. 돈이 모자라거나 너무 많으면 거절한다", async () => {
     const p0 = await h.service.ensureProfile("a");
     await expect(h.service.buyBait("a", "bait-gold")).rejects.toThrow("돈이 부족");
@@ -467,6 +492,11 @@ describe("경제와 도감", () => {
     const used = waitMessage(clients[1], "baitLeft");
     clients[1].send("bait", { id: "bait-gold" });
     expect(await used).toEqual({ id: "bait-gold", left: 1, ms: BAIT_DURATION_MS });
+    // 연달아 눌러도(응답이 늦을 때) 한 개만 쓰고 나머지는 거절된다
+    clients[1].send("bait", { id: "bait-gold" });
+    clients[1].send("bait", { id: "bait-gold" });
+    await new Promise((r) => setTimeout(r, 100));
+    expect((await h.service.profile("gold"))!.baits["bait-gold"]).toBe(1);
     // 던져도 더 줄지 않는다(던질 때마다 쓰는 게 아니라 쓴 뒤 1분 동안 이어진다)
     const bites = clients.map((c) => waitMessage(c, "bite"));
     for (const c of clients) c.send("cast", { power: 0.3, yaw: Math.PI });

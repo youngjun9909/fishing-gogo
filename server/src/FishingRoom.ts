@@ -7,7 +7,11 @@ import {
 } from "@fishing/shared";
 import type { FishSpecies, MapDef, MapId, TugParams } from "@fishing/shared";
 import { ChatLimiter, cleanChat, hasBadWord } from "./chat";
+import { recordDiag } from "./diag";
 import type { GameService } from "./service";
+
+/** 타이밍 칸 판정에서 통신 지연으로 봐 주는 최대 시간(ms) */
+const REEL_LAG_MS = 400;
 
 export class PlayerState extends Schema {
   @type("string") playerId = "";
@@ -104,7 +108,9 @@ export function createFishingRoom(deps: RoomDeps) {
     /** 연결이 끊겨 돌아오길 기다리는 자리(자리 예약을 끊을 때 쓴다), 새 접속에 밀려난 옛 접속 */
     private away = new Map<string, ReturnType<Room["allowReconnection"]>>();
     private replaced = new Set<string>();
+    private joinedAt = new Map<string, number>();
     private baitBuff = new Map<string, { id: string; until: number }>();
+    private baitBusy = new Set<string>();
 
     async onCreate(options: { map?: string; ownerId?: string; title?: string; isPublic?: boolean }) {
       const mapId = options.map ?? "lake";
@@ -133,7 +139,7 @@ export function createFishingRoom(deps: RoomDeps) {
       this.onMessage("cast", (c, m) => void this.handleCast(c, m));
       this.onMessage("bait", (c, m) => void this.handleBait(c, m));
       this.onMessage("hook", (c) => this.handleHook(c));
-      this.onMessage("reel", (c) => this.handleReel(c));
+      this.onMessage("reel", (c, m) => this.handleReel(c, m));
       this.onMessage("kick", (c, m) => this.handleKick(c, m));
       this.onMessage("cancel", (c) => this.handleCancel(c));
       this.onMessage("refresh", (c) => void this.handleRefresh(c));
@@ -167,6 +173,7 @@ export function createFishingRoom(deps: RoomDeps) {
       p.z = this.map.spawn.z;
       this.state.players.set(client.sessionId, p);
       this.names.set(client.sessionId, profile.nickname);
+      this.joinedAt.set(client.sessionId, Date.now());
       this.sessionOf.set(profile.id, client.sessionId);
       this.rods.set(client.sessionId, rodLevelOf(profile.equipped));
       this.limiters.set(client.sessionId, new ChatLimiter());
@@ -182,6 +189,8 @@ export function createFishingRoom(deps: RoomDeps) {
     }
 
     async onLeave(client: Client, consented: boolean) {
+      recordDiag({ side: "server", event: "leave", name: this.names.get(client.sessionId) ?? "", consented, replaced: this.replaced.has(client.sessionId), inRoomSec: Math.round((Date.now() - (this.joinedAt.get(client.sessionId) ?? Date.now())) / 1000), players: this.state.players.size });
+      this.joinedAt.delete(client.sessionId);
       if (!consented && !this.replaced.has(client.sessionId)) {
         const wait = this.allowReconnection(client, RECONNECT_SECONDS);
         this.away.set(client.sessionId, wait);
@@ -290,12 +299,20 @@ export function createFishingRoom(deps: RoomDeps) {
       state.timer = this.clock.setTimeout(() => this.bite(client.sessionId), deps.waitMs() * state.bait.waitMul);
     }
 
-    /** 미끼를 쓴다: 한 개를 쓰고 1분 동안 입질이 빨라진다(없으면 거절, 이미 쓰는 중이면 새로 1분) */
+    /** 미끼를 쓴다: 한 개를 쓰고 1분 동안 입질이 빨라진다(없으면 거절, 이미 쓰는 중이면 거절) */
     private async handleBait(client: Client, m: { id?: string | null }) {
       const p = this.player(client);
       const id = m?.id ?? null;
       if (!p || !id) return;
+      // 쓰는 중이거나 처리 중일 때 또 눌러도 미끼를 더 쓰지 않는다(응답이 늦을 때 연달아 눌러 다 써 버리던 문제)
+      const buff = this.baitBuff.get(client.sessionId);
+      if ((buff && buff.until > deps.now()) || this.baitBusy.has(client.sessionId)) {
+        client.send("toast", "이미 미끼를 쓰는 중이에요");
+        return;
+      }
+      this.baitBusy.add(client.sessionId);
       const used = baitById(id) ? await deps.service.consumeBait(p.playerId, id).catch(() => null) : null;
+      this.baitBusy.delete(client.sessionId);
       if (!used?.id) {
         client.send("baitLeft", { id: null, left: 0, out: id });
         return;
@@ -343,11 +360,14 @@ export function createFishingRoom(deps: RoomDeps) {
       f.timer = this.clock.setTimeout(() => this.finish(client.sessionId, false, "timeout"), deps.minigameTimeoutMs);
     }
 
-    private handleReel(client: Client) {
+    private handleReel(client: Client, msg?: { e?: unknown }) {
       const f = this.fishing.get(client.sessionId);
       if (f?.phase === "tug") return this.handlePull(client.sessionId, f);
       if (!f || f.phase !== "minigame" || !f.species) return;
-      const cursor = cursorAt(deps.now() - f.startedAt!, f.speed!);
+      // 클라이언트가 보낸 "내 화면 커서 시점"을 쓰되, 통신 지연 보정은 최대 REEL_LAG_MS까지만(미래 값은 무시)
+      const real = deps.now() - f.startedAt!;
+      const e = typeof msg?.e === "number" && Number.isFinite(msg.e) ? Math.min(real, Math.max(real - REEL_LAG_MS, msg.e)) : real;
+      const cursor = cursorAt(e, f.speed!);
       const ok = judge(cursor, f.target!, f.zone ?? f.species.zoneWidth);
       const tug = ok ? tugParams(f.species.rarity, this.rods.get(client.sessionId) ?? 0, deps.rng) : null;
       if (!tug) return void this.finish(client.sessionId, ok, ok ? "caught" : "escaped");

@@ -4,7 +4,7 @@ import { BAITS, BASE_MAPS, CODEX_REWARDS, CYCLE_MS, DAY_MS, EMOTES, MAX_PLAYERS,
 import type { MapId, PlayerProfile, Rarity, TugParams } from "@fishing/shared";
 import type { Joined } from "../App";
 import { sfx, startBgm, stopBgm } from "../audio";
-import { colyseus, inviteLink } from "../net";
+import { api, colyseus, inviteLink } from "../net";
 import { GameScene } from "../three/GameScene";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
 import { Inventory, Modal, Shop } from "./Lobby";
@@ -148,6 +148,7 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
       setClock(phase < DAY_MS ? { night: false, left: DAY_MS - phase } : { night: true, left: CYCLE_MS - phase });
     }, 500);
 
+    const joinedAt = Date.now();
     startBgm(joined.mapId || "lake");
 
     room.onLeave((c: number) => {
@@ -157,14 +158,18 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
       setLost(true);
       const token = room.reconnectionToken;
       const started = Date.now();
+      const conn = (navigator as any).connection;
+      const info = { code: c, hidden: document.hidden, sinceVisChangeSec: Math.round((Date.now() - lastVisChange) / 1000), online: navigator.onLine, net: conn?.effectiveType ?? "", rttMs: conn?.rtt ?? null, inRoomSec: Math.round((Date.now() - joinedAt) / 1000), mobile: isTouch, map: joined.mapId };
+      const report = (reconnected: boolean) => void api("/api/diag", { ...info, reconnected, afterSec: Math.round((Date.now() - started) / 1000) }).catch(() => {});
       const tryAgain = async () => {
         try {
           const back = await colyseus.reconnect(token);
           setLost(false);
+          report(true);
           onRejoin(back);
         } catch {
           if (Date.now() - started < RECONNECT_SECONDS * 1000) setTimeout(tryAgain, 2000);
-          else onLeave();
+          else { report(false); onLeave(); }
         }
       };
       void tryAgain();
@@ -258,7 +263,7 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
                   <button
                     key={b.id}
                     className={`panel chip bait-chip ${leftSec > 0 ? "on" : ""}`}
-                    disabled={n <= 0}
+                    disabled={n <= 0 || (baitActive ? baitActive.endAt > performance.now() : false)}
                     title={b.desc}
                     onClick={() => { room.send("bait", { id: b.id }); }}
                   >
@@ -389,6 +394,10 @@ function Minigame({ mini }: { mini: { target: number; zoneWidth: number; speed: 
     </div>
   );
 }
+
+// 접속이 끊긴 이유를 모으려고 탭이 보였다 가려진 시각을 기억해 둔다
+let lastVisChange = Date.now();
+if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => { lastVisChange = Date.now(); });
 
 /** 발작 시작 전 이만큼 앞부터 3-2-1을 보여 준다(숫자 하나에 0.5초, 합쳐서 1.5초) */
 const FRENZY_WARN_MS = 1500;

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { MAX_ROD, RODS, STONE_PRICE, ROD_SELL_BONUS, rodEffects, rodLevelOf } from "@fishing/shared";
+import { MAX_ROD, RODS, STONE_PRICE, ROD_SELL_BONUS, rarityOdds, rodEffects, rodLevelOf } from "@fishing/shared";
 import type { PlayerProfile } from "@fishing/shared";
 import { sfx } from "../audio";
 import { api } from "../net";
@@ -13,11 +13,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** 단계에 따른 능력치(강화 전후를 비교해서 보여 준다) */
 function stats(level: number): Array<[string, string]> {
   const e = rodEffects(level);
+  const o = rarityOdds(level);
+  const pct = (x: number) => `${(x * 100).toFixed(2)}%`; // 신화처럼 작은 값도 보이게 소수 둘째 자리까지
   return [
-    ["희귀 확률", `x${e.bias.rare.toFixed(2)}`],
-    ["매우 희귀 확률", `x${e.bias.veryRare.toFixed(2)}`],
-    ["전설 확률", `x${e.bias.legendary.toFixed(2)}`],
-    ["신화 확률", `x${e.bias.mythic.toFixed(2)}`],
+    ["희귀 확률", pct(o.rare)],
+    ["매우 희귀 확률", pct(o.veryRare)],
+    ["전설 확률", pct(o.legendary)],
+    ["신화 확률", pct(o.mythic)],
     ["던지는 거리", `+${Math.round((e.castMul - 1) * 100)}%`],
     ["타이밍 칸", `+${Math.round((e.zoneMul - 1) * 100)}%`],
     ["물고기 판매가", `+${(ROD_SELL_BONUS * level * 100).toFixed(1).replace(/\.0$/, "")}%`],
@@ -122,7 +124,7 @@ export function Forge({ profile, reload, onClose }: { profile: PlayerProfile; re
         )}
         {nxt && (
           <div className="forge-fx">
-            {nxt.slice(0, 3).map(([k, v], i) => <div key={k}><span>{k}</span><span>{cur[i][1]} <em>›</em> <b>{v}</b></span></div>)}
+            {nxt.slice(0, 4).map(([k, v], i) => <div key={k}><span>{k}</span><span>{cur[i][1]} <em>›</em> <b>{v}</b></span></div>)}
           </div>
         )}
         <div className="forge-buy">
@@ -131,7 +133,7 @@ export function Forge({ profile, reload, onClose }: { profile: PlayerProfile; re
             <button key={n} disabled={phase !== "idle" || haveCoins < n * STONE_PRICE} onClick={() => void buy(n)}>{n}개 · 🪙 {(n * STONE_PRICE).toLocaleString()}</button>
           ))}
         </div>
-        <p className="forge-hint">강화는 확률로 성공해요. 실패하면 강화석과 코인만 사라지고 단계는 그대로예요.</p>
+        <p className="forge-hint">확률은 네 맵·낮밤 평균이에요. 강화는 확률로 성공해요. 실패하면 강화석과 코인만 사라지고 단계는 그대로예요.</p>
         {err && <p className="err">{err}</p>}
         <button className="forge-go" disabled={!enough || phase !== "idle"} onClick={go}>
           {!next ? "이미 가장 좋은 낚싯대예요" : !enough ? "재료나 코인이 부족해요" : "낚싯대 강화"}

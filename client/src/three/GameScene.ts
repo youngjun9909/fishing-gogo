@@ -314,9 +314,12 @@ export class GameScene {
     }
   }
 
+  private miniStart = 0;
+
   /** 타이밍 칸 맞추기(reel)와 힘겨루기 당기기는 같은 메시지다 */
   private pull() {
-    this.room.send("reel");
+    // 내 화면 커서가 어디까지 갔는지(e)를 같이 보낸다: 서버가 통신 지연만큼 보정해서 판정한다
+    this.room.send("reel", this.me()?.fishing === "minigame" ? { e: performance.now() - this.miniStart } : undefined);
     if (this.tugging) this.bus.emit("pulled", 1);
   }
 
@@ -367,7 +370,8 @@ export class GameScene {
     });
     r.onMessage("minigame", (m: any) => {
       this.myMinigame = true;
-      this.bus.emit("minigame", { ...m, startedAt: performance.now() });
+      this.miniStart = performance.now();
+      this.bus.emit("minigame", { ...m, startedAt: this.miniStart });
     });
     r.onMessage("tug", (m: any) => {
       this.tugging = true;

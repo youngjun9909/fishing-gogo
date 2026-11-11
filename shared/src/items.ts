@@ -1,5 +1,6 @@
 import { codexSpeciesFor, SPECIES } from "./fish";
-import type { MapId } from "./types";
+import type { MapId, Rarity } from "./types";
+import { candidatesFor } from "./rules";
 
 export type ItemSlot = "top" | "pants" | "shoes" | "aura";
 
@@ -83,6 +84,28 @@ export function rodEffects(level: number) {
       mythic: bias(16.86, l),
     },
   };
+}
+
+/**
+ * 이 단계의 낚싯대로 멀리 던졌을 때 등급별로 낚일 확률(0~1).
+ * 네 맵 x 낮·밤 여덟 경우를 같은 비중으로 평균 낸 값이라, 실제 맵마다 조금씩 다르다(강화창·결과창에 보여 준다).
+ */
+export function rarityOdds(level: number): Record<Rarity, number> {
+  const bias = rodEffects(level).bias;
+  const maps: MapId[] = ["lake", "pier", "ice", "cruise"];
+  const out: Record<Rarity, number> = { common: 0, rare: 0, veryRare: 0, legendary: 0, mythic: 0 };
+  let n = 0;
+  for (const m of maps) {
+    for (const t of ["day", "night"] as const) {
+      const list = candidatesFor(m, t, "far");
+      const total = list.reduce((s, f) => s + f.weight * bias[f.rarity], 0);
+      if (total <= 0) continue;
+      for (const f of list) out[f.rarity] += (f.weight * bias[f.rarity]) / total;
+      n++;
+    }
+  }
+  for (const k of Object.keys(out) as Rarity[]) out[k] /= n || 1;
+  return out;
 }
 
 // ---- 미끼: 던질 때마다 1개씩 쓰는 소모품. 사서 하나를 골라 쓴다 ----
