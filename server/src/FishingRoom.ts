@@ -2,7 +2,7 @@ import { Client, Room, matchMaker } from "@colyseus/core";
 import { MapSchema, Schema, type } from "@colyseus/schema";
 import {
   BASE_MAPS, BITE_WINDOW_MS, MAX_PLAYERS, MINIGAME_TIMEOUT_MS, RECONNECT_SECONDS, WAIT_MAX_MS,
-  BAIT_DURATION_MS, WAIT_MIN_MS, baitById, baitEffects, castDistance, rodEffects, rodLevelOf, cursorAt, cursorSpeed, isBaseMap, isRareOrBetter, judge, pickSpecies,
+  BAIT_DURATION_MS, WAIT_MIN_MS, baitById, baitEffects, castDistance, rodEffects, rodLevelOf, cursorAt, cursorDir, cursorSpeed, isBaseMap, isRareOrBetter, judge, pickSpecies,
   reachOf, rollSize, sellPrice, speciesById, timeOfDay, TUG_MIN_GAP_MS, tugDecay, tugParams, tugPull,
 } from "@fishing/shared";
 import type { FishSpecies, MapDef, MapId, TugParams } from "@fishing/shared";
@@ -381,9 +381,9 @@ export function createFishingRoom(deps: RoomDeps) {
       const real = deps.now() - f.startedAt!;
       const e = typeof msg?.e === "number" && Number.isFinite(msg.e) ? Math.min(real, Math.max(real - REEL_LAG_MS, msg.e)) : real;
       const cursor = cursorAt(e, f.speed!);
-      const ok = judge(cursor, f.target!, f.zone ?? f.species.zoneWidth);
+      const ok = judge(cursor, f.target!, f.zone ?? f.species.zoneWidth, cursorDir(e, f.speed!));
       // 타이밍 판정 기록: lag는 서버가 인정한 통신 지연(ms). 맞게 눌렀는데 실패한다는 제보가 있을 때 로그로 확인한다
-      console.log(`[reel] ok=${ok} cursor=${cursor.toFixed(2)} target=${f.target!.toFixed(2)} zone=${(f.zone ?? 0).toFixed(2)} real=${Math.round(real)} e=${Math.round(e)} sent=${typeof msg?.e === "number" ? Math.round(msg.e) : "-"}`);
+      console.log(`[reel] ok=${ok} dir=${cursorDir(e, f.speed!) === 1 ? "right" : "left"} cursor=${cursor.toFixed(2)} target=${f.target!.toFixed(2)} zone=${(f.zone ?? 0).toFixed(2)} real=${Math.round(real)} e=${Math.round(e)} sent=${typeof msg?.e === "number" ? Math.round(msg.e) : "-"}`);
       const tug = ok ? tugParams(f.species.rarity, this.rods.get(client.sessionId) ?? 0, deps.rng) : null;
       if (!tug) return void this.finish(client.sessionId, ok, ok ? "caught" : "escaped");
       // 전설·신화: 타이밍을 맞추면 이어서 힘겨루기(연타)

@@ -87,8 +87,19 @@ export function cursorAt(elapsedMs: number, speed: number): number {
   return t < 0.5 ? t * 2 : 2 - t * 2;
 }
 
-export function judge(cursor: number, target: number, zoneWidth: number): boolean {
-  return Math.abs(cursor - target) <= zoneWidth / 2;
+/** 사람은 칸 가장자리에 닿는 순간을 노려 누르고, 화면 표시 지연도 있다. 실제 기록에서 칸 끝에서 0.035~0.04 모자라 실패한 판이 연달아 나와 그보다 넉넉히 정한다 */
+export const JUDGE_PAD = 0.06;
+
+/** 커서가 지금 오른쪽으로 가는 중이면 1, 왼쪽으로 가는 중이면 -1 */
+export function cursorDir(elapsedMs: number, speed: number): 1 | -1 {
+  const phase = (elapsedMs / 1000) * speed;
+  return phase - Math.floor(phase) < 0.5 ? 1 : -1;
+}
+
+/** 칸에 들어오는 쪽 끝에만 JUDGE_PAD만큼 일찍 눌러도 인정한다. 지나간 뒤(늦게) 누른 것은 인정하지 않는다 */
+export function judge(cursor: number, target: number, zoneWidth: number, dir: 1 | -1 = 1): boolean {
+  const d = (cursor - target) * dir; // 음수면 아직 칸에 닿기 전
+  return d >= -(zoneWidth / 2 + JUDGE_PAD) && d <= zoneWidth / 2;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { BAIT_DURATION_MS, CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, ROD_SELL_BONUS, STONES_PER_FISH, SPECIES, baitEffects, rarityOdds, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf, sellPrice, inFrenzy, tugDecay, tugParams, tugPull } from "@fishing/shared";
+import { BAIT_DURATION_MS, judge, CYCLE_MS, DAY_MS, MAX_ROD, RODS, BAITS, ROD_SELL_BONUS, STONES_PER_FISH, SPECIES, baitEffects, rarityOdds, candidatesFor, castDistance, pickSpecies, rodEffects, rodLevelOf, sellPrice, inFrenzy, tugDecay, tugParams, tugPull } from "@fishing/shared";
 import { matchMaker } from "@colyseus/core";
 import { hasBadWord } from "../src/chat";
 import { startHarness, until, waitMessage } from "./harness";
@@ -596,5 +596,18 @@ describe("힘겨루기", () => {
     expect(p.frenzy).toHaveLength(3);
     expect(play(p, 7)).toBe(false);
     expect(play(p, 7, true)).toBe(true);
+  });
+});
+
+describe("타이밍 칸 판정", () => {
+  it("칸에 들어오는 쪽에서는 일찍 눌러도 조금 봐 주고, 지나간 뒤에 누른 것은 봐 주지 않는다", () => {
+    const zone = 0.2; // 목표 0.5 → 칸은 0.4~0.6
+    // 오른쪽으로 가는 중: 들어오는 쪽은 0.4(왼쪽 끝)
+    expect(judge(0.36, 0.5, zone, 1)).toBe(true); // 닿기 전 0.04: 인정
+    expect(judge(0.3, 0.5, zone, 1)).toBe(false); // 너무 이름
+    expect(judge(0.61, 0.5, zone, 1)).toBe(false); // 지나간 뒤: 불인정
+    // 왼쪽으로 가는 중: 들어오는 쪽은 0.6(오른쪽 끝)
+    expect(judge(0.64, 0.5, zone, -1)).toBe(true);
+    expect(judge(0.39, 0.5, zone, -1)).toBe(false);
   });
 });
