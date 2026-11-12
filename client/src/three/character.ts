@@ -407,6 +407,10 @@ export interface PoseState {
   moving: boolean;
   /** idle | waiting | bite | minigame */
   fishing: string;
+  /** 탈것에 올라탄 자세 (수중 탐험의 신화 물고기) */
+  ride?: boolean;
+  /** 헤엄 자세 (수중 탐험). k: 0 제자리에서 떠 있음 ~ 1 헤엄침. style: 0 평영(양팔을 함께 뻗고 가르기), 1 자유형(양팔을 번갈아 젓기) */
+  swim?: { k: number; style: number };
 }
 
 /** 캐릭터 한 명: 3D 모델과 걷기, 이모트, 낚시 자세 애니메이션 */
@@ -426,7 +430,7 @@ export class CharacterRig {
   private nextBlink = 2;
   private eyes: THREE.Object3D[] = [];
   /** 걷기에서 나오는 보조 값(골반 비틀림, 무릎 굽힘 등) */
-  private ex = { hipTwist: 0, hipRoll: 0, spineTwist: 0, lean: 0, kneeP: 0, kneeN: 0 };
+  private ex = { hipTwist: 0, hipRoll: 0, spineTwist: 0, lean: 0, kneeP: 0, kneeN: 0, straight: 0 }; // straight: 1이면 팔꿈치를 편다(헤엄에서 팔을 쭉 뻗을 때)
   readonly rodTip = new THREE.Object3D();
   private rod = new THREE.Group();
   private auraGroup: THREE.Group | null = null;
@@ -581,7 +585,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
     const ER = (a: number) => E(0, 0, a);
     const aP = this.armR.rotation, aN = this.armL.rotation; // 캐릭터 왼쪽(+x) 팔이 옛 armR
     const tP = this.legR.rotation.x, tN = this.legL.rotation.x;
-    const elbow = (r: THREE.Euler) => 0.18 + 0.55 * Math.max(0, -r.x);
+    const elbow = (r: THREE.Euler) => (0.18 + 0.55 * Math.max(0, -r.x)) * (1 - ex.straight);
     const body = E(ex.lean, ex.spineTwist, 0); // 상체(허리 비틀림 + 앞기울임)
     const noTwist = E(ex.lean, 0, 0);
     const Q: Record<string, THREE.Quaternion> = {
@@ -815,6 +819,47 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
         this.body.rotation.x = -0.14 + Math.sin(this.t * 17) * 0.04;
         this.body.position.y = Math.abs(Math.sin(this.t * 14)) * 0.05;
       }
+    }
+
+    this.ex.straight = 0;
+    if (pose.swim) { // 헤엄: 몸을 눕히는 것은 부르는 쪽(root 기울기)이 하고, 여기서는 팔다리만 움직인다
+      const k = pose.swim.k, crawl = pose.swim.style === 1;
+      const mix = (a: number, b: number) => a + (b - a) * k;
+      const kt = this.t * 10, kick = Math.sin(kt) * (0.12 + 0.3 * k); // 발차기
+      this.legL.rotation.x = kick;
+      this.legR.rotation.x = -kick;
+      this.ex.kneeN = 0.1 + 0.3 * Math.max(0, Math.sin(kt));
+      this.ex.kneeP = 0.1 + 0.3 * Math.max(0, -Math.sin(kt));
+      this.ex.hipTwist = this.ex.hipRoll = this.ex.lean = 0;
+      this.body.position.y = 0;
+      this.head.rotation.set(-0.85 * k, 0, 0); // 엎드려도 앞을 본다
+      // 제자리: 팔을 옆으로 벌려 살랑살랑 젓는다
+      const tr = Math.sin(this.t * 3) * 0.25;
+      let rx: number, rz: number, lx: number, lz: number, twist = 0, straight: number;
+      if (crawl) { // 자유형: 한 팔씩 앞으로 뻗어 뒤로 당긴다. 앞으로 되돌릴 때는 팔을 바깥으로 들어 넘긴다. 몸도 따라 좌우로 돈다
+        const c = this.t * 5.2;
+        rx = -1.5 - 1.5 * Math.cos(c); rz = 0.15 + 0.6 * Math.max(0, -Math.sin(c));
+        lx = -1.5 + 1.5 * Math.cos(c); lz = -(0.15 + 0.6 * Math.max(0, Math.sin(c)));
+        twist = Math.sin(c) * 0.3; straight = 0.85;
+      } else { // 평영: 두 팔을 모아 앞으로 뻗고(미끄러지기) → 바깥으로 벌려 가르고 → 가슴 앞으로 모은다
+        const p = ((this.t * 3.4) / (Math.PI * 2)) % 1;
+        const reach = p < 0.35 ? 1 : p < 0.7 ? 1 - (p - 0.35) / 0.35 : (p - 0.7) / 0.3;
+        const sweep = Math.sin(Math.PI * Math.min(1, Math.max(0, (p - 0.3) / 0.45)));
+        rx = lx = -1.2 - 1.75 * reach; rz = 0.1 + sweep * 0.9; lz = -rz;
+        straight = 0.35 + 0.6 * reach;
+      }
+      this.armR.rotation.set(mix(-0.5 + tr, rx), 0, mix(0.75, rz));
+      this.armL.rotation.set(mix(-0.5 - tr, lx), 0, mix(-0.75, lz));
+      this.ex.spineTwist = twist * k;
+      this.ex.straight = mix(0.3, straight);
+    }
+    if (pose.ride) { // 탈것에 앉아 앞을 잡은 자세
+      this.legL.rotation.x = this.legR.rotation.x = -1.35;
+      this.ex.kneeN = this.ex.kneeP = 1.25;
+      this.ex.hipTwist = this.ex.hipRoll = this.ex.spineTwist = 0;
+      this.ex.lean = 0.16;
+      this.armL.rotation.set(-0.85, 0, -0.12);
+      this.armR.rotation.set(-0.85, 0, 0.12);
     }
 
     if (this.emote) {

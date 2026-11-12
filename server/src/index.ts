@@ -4,6 +4,7 @@ import { createApi } from "./api";
 import { createAuthenticator } from "./auth";
 import { recentDiag, recordDiag } from "./diag";
 import { createFishingRoom, defaultDeps } from "./FishingRoom";
+import { createUnderwaterRoom } from "./UnderwaterRoom";
 import { GameService } from "./service";
 import { MemoryStore } from "./store";
 import type { PlayerStore } from "./store";
@@ -14,13 +15,17 @@ type Deps = ReturnType<typeof defaultDeps>;
 export function createGameServer(deps: Deps, validateMap: (data: unknown) => string | null = () => null) {
   const server = new Server({ transport: new WebSocketTransport({ pingInterval: 5000, pingMaxRetries: 6 }) }) // 응답이 30초 넘게 없어야 끊는다(기본은 약 6초: 탭이 뒤로 가거나 잠깐 느려져도 튕겼다);
   server.define("fishing", createFishingRoom(deps));
+  server.define("underwater", createUnderwaterRoom(deps)).sortBy({ clients: -1 }); // 수중 탐험 채널: 사람이 많은 채널부터 채운다(1채널이 차야 2채널이 열린다)
   // 방 목록: 공개이고 아직 자리가 있는 방만(꽉 차면 Colyseus가 잠가서 빠진다)
   // 사람이 0명인 방(모두 끊겨서 자리만 남은 방)은 보이지 않게 한다. 방금 만든 방은 곧 방장이 들어오므로 잠깐 안 보일 뿐이다
   const listRooms = async () =>
     (await matchMaker.query({ name: "fishing", private: false, locked: false })).filter((r) => (r.metadata?.players ?? r.clients) > 0).map((r) => ({
       code: r.roomId, title: r.metadata?.title ?? "", mapId: r.metadata?.mapId ?? "lake", hostName: r.metadata?.hostName ?? "", players: r.metadata?.players ?? r.clients, max: r.maxClients,
     }));
-  const api = createApi(deps.service, deps.authenticate, validateMap, listRooms);
+  // 수중 탐험 채널 목록(채널 번호 순): 친구와 같은 채널로 직접 옮겨 갈 때 쓴다
+  const listChannels = async () =>
+    (await matchMaker.query({ name: "underwater" })).map((r) => ({ id: r.roomId, channel: Number(r.metadata?.channel ?? 0), players: r.clients, max: r.maxClients })).sort((a, b) => a.channel - b.channel);
+  const api = createApi(deps.service, deps.authenticate, validateMap, listRooms, listChannels);
   // 매치메이킹 요청은 Colyseus가 처리하고, /api/ 요청만 여기서 처리한다
   (server.transport as any).server.on("request", (req: any, res: any) => {
     // Render 같은 호스팅이 "/"로 서버가 살아 있는지 확인한다. 아무도 답하지 않으면 멈춘 것으로 보고 접속을 끊는다
@@ -74,6 +79,13 @@ if (process.argv[1]?.endsWith("index.ts")) {
   if (env.ALLOW_DEV_LOGIN === "false" && !env.SUPABASE_URL) console.error("개발용 로그인을 껐는데 Supabase 설정도 없어서 아무도 접속할 수 없어요.");
   recordDiag({ side: "server", event: "start" }); // 서버가 다시 켜진 시각: 이때 근처의 끊김은 서버 재시작 탓일 수 있다
   const server = createGameServer(defaultDeps({ service, authenticate }));
+  // 서버가 잠깐 멈추면(무료 서버의 느려짐 등) 모든 접속이 한꺼번에 끊긴다. 1초 타이머가 1.5초 넘게 밀리면 그 사실을 기록해 끊김 시각과 맞춰 본다
+  let lastTick = Date.now();
+  setInterval(() => {
+    const gap = Date.now() - lastTick;
+    lastTick = Date.now();
+    if (gap > 2500) recordDiag({ side: "server", event: "stall", ms: gap - 1000 });
+  }, 1000).unref();
   const port = Number(env.PORT ?? 2567);
   server.listen(port).then(() => console.log(`game server on ${port}`));
   // Render 무료 서버는 바깥에서 15분간 요청이 없으면 잠든다. 서버가 자기 공개 주소로 10분마다 요청해 깨어 있게 한다(Render가 RENDER_EXTERNAL_URL을 넣어 준다)

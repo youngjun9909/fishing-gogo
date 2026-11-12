@@ -11,7 +11,7 @@ import { buildBait } from "../three/baits";
 import { buildRod } from "../three/rods";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
 
-type Modal = null | "create" | "rooms" | "join" | "inventory" | "codex" | "shop" | "settings";
+type Modal = null | "create" | "rooms" | "join" | "inventory" | "codex" | "mounts" | "shop" | "settings";
 
 const MAP_INFO: Record<MapId, { emoji: string; desc: string }> = {
   lake: { emoji: "🌳", desc: "잔잔한 물가에서 느긋하게. 처음 시작하기 좋아요." },
@@ -70,12 +70,17 @@ export function Lobby(props: {
         {!creating && (
           <div className="menu panel">
             <button className="btn pink wide" onClick={() => open("create")}>🎣 방 만들기</button>
-            <button className="btn mint wide" onClick={() => open("rooms")}>📋 방 목록</button>
-            <button className="btn mint wide" onClick={() => open("join")}>🔑 코드로 입장</button>
-            <button className="btn" onClick={() => open("inventory")}>🎒 인벤토리</button>
-            <button className="btn" onClick={() => open("codex")}>📖 도감</button>
-            <button className="btn sun" onClick={() => open("shop")}>🛍️ 상점</button>
-            <button className="btn ghost" onClick={() => { sfx.click(); setCreating(true); }}>✨ 꾸미기</button>
+            <button className="btn mint small" onClick={() => open("rooms")}>📋 방 목록</button>
+            <button className="btn mint small" onClick={() => open("join")}>🔑 코드 입장</button>
+            <button className="btn wide small" onClick={() => { sfx.click(); location.href = "/underwater.html"; }}>🌊 수중 탐험</button>
+            {/* 자주 안 누르는 것들은 작은 그림 단추 한 줄로 모은다 */}
+            <div className="tiles">
+              <button className="btn tile" onClick={() => open("inventory")}><span>🎒</span>가방</button>
+              <button className="btn tile" onClick={() => open("codex")}><span>📖</span>도감</button>
+              <button className="btn tile" onClick={() => open("mounts")}><span>🐉</span>탈것</button>
+              <button className="btn tile sun" onClick={() => open("shop")}><span>🛍️</span>상점</button>
+              <button className="btn tile ghost" onClick={() => { sfx.click(); setCreating(true); }}><span>✨</span>꾸미기</button>
+            </div>
             {props.error && <div className="err wide" style={{ gridColumn: "span 2" }}>{props.error}</div>}
           </div>
         )}
@@ -104,6 +109,7 @@ export function Lobby(props: {
       {modal === "join" && <JoinRoom onClose={() => setModal(null)} onJoin={props.onJoin} />}
       {modal === "inventory" && <Inventory onClose={() => setModal(null)} reload={props.reload} rod={rodLevelOf(profile.equipped)} />}
       {modal === "codex" && <Codex onClose={() => setModal(null)} profile={profile} />}
+      {modal === "mounts" && <Mounts onClose={() => setModal(null)} profile={profile} reload={props.reload} />}
       {modal === "shop" && <Shop onClose={() => setModal(null)} profile={profile} reload={props.reload} />}
       {modal === "settings" && <Settings onClose={() => setModal(null)} onLogout={props.onLogout} reload={props.reload} />}
     </>
@@ -302,6 +308,58 @@ function Codex({ onClose, profile }: { onClose: () => void; profile: PlayerProfi
               <div className="nm">{e ? sp.name : "???"}</div>
               <div className="sub">{e ? `최대 ${e.maxSize}cm · ${e.count}마리` : sp.time === "night" ? "밤에 만날 수 있대요" : "아직 못 잡았어요"}</div>
               {e && <span className="badge" style={{ background: RARITY_COLOR[sp.rarity] }}>{RARITY_LABEL[sp.rarity]}</span>}
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
+/** 신화 탈것: 잡아 본 신화 물고기를 칸 1~4에 넣어 두면 수중 탐험에서 숫자 키로 불러 탄다 */
+function Mounts({ onClose, profile, reload }: { onClose: () => void; profile: PlayerProfile; reload: () => Promise<void> }) {
+  const [codex] = useFetch<CodexEntry[]>("/api/codex");
+  const [sel, setSel] = useState(1);
+  const [msg, setMsg] = useState("");
+  const have = new Set((codex ?? []).map((c) => c.speciesId));
+  const myth = SPECIES.filter((sp) => sp.rarity === "mythic");
+  const put = async (slot: number, speciesId: string | null) => {
+    try {
+      await api("/api/mount", { slot, speciesId });
+      await reload();
+      sfx.click();
+      setMsg("");
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  };
+  return (
+    <Modal title="🐉 신화 탈것" onClose={onClose}>
+      <div className="sub" style={{ marginBottom: 10 }}>칸을 고른 뒤 아래에서 잡아 본 신화를 누르면 들어가요. 수중 탐험에서 숫자 키 1~4로 불러 탈 수 있어요.</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
+        {[1, 2, 3, 4].map((n) => {
+          const sp = myth.find((q) => q.id === profile.equipped[`mount${n}`]);
+          return (
+            <div key={n} className="cell" onClick={() => setSel(n)} style={{ cursor: "pointer", outline: sel === n ? `3px solid ${RARITY_COLOR.mythic}` : "none" }}>
+              <span className="badge" style={{ background: sel === n ? RARITY_COLOR.mythic : "#8fa3b3" }}>{n}번 키</span>
+              {sp ? <FishIcon sp={sp} size={84} /> : <div style={{ height: 84, display: "grid", placeItems: "center", fontSize: 30, opacity: 0.4 }}>＋</div>}
+              <div className="nm">{sp ? sp.name : "빈 칸"}</div>
+              {sp ? <button className="btn small ghost" onClick={(e) => { e.stopPropagation(); void put(n, null); }}>비우기</button> : <div className="sub">아래에서 골라요</div>}
+            </div>
+          );
+        })}
+      </div>
+      {msg && <div className="err" style={{ marginBottom: 10 }}>{msg}</div>}
+      <div className="grid">
+        {myth.map((sp) => {
+          const got = have.has(sp.id);
+          const at = [1, 2, 3, 4].find((n) => profile.equipped[`mount${n}`] === sp.id);
+          return (
+            <div key={sp.id} className={`cell ${got ? "" : "unknown"}`} style={{ cursor: got ? "pointer" : "default" }} onClick={() => got && void put(sel, sp.id)}>
+              <FishIcon sp={sp} size={92} silhouette={!got} />
+              <div className="nm">{got ? sp.name : "???"}</div>
+              <div className="sub">{!got ? "아직 못 잡았어요" : at ? `${at}번 칸에 있어요` : `눌러서 ${sel}번 칸에 넣기`}</div>
+              {at && <span className="badge" style={{ background: RARITY_COLOR.mythic }}>{at}번</span>}
             </div>
           );
         })}

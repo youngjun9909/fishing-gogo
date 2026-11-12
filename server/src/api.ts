@@ -10,6 +10,7 @@ export function createApi(
   authenticate: (token: string) => Promise<string | null>,
   validateMap: (data: unknown) => string | null,
   listRooms: () => Promise<unknown> = async () => [],
+  listChannels: () => Promise<unknown> = async () => [],
 ) {
   const routes: Record<string, Handler> = {
     "GET /api/me": (id) => service.ensureProfile(id),
@@ -24,12 +25,14 @@ export function createApi(
     "POST /api/stone/buy": (id, b) => service.buyStones(id, Number(b.count)),
     "POST /api/bait/buy": (id, b) => service.buyBait(id, String(b.baitId)),
     "POST /api/equip": (id, b) => service.equip(id, b.slot, b.itemId ?? null),
+    "POST /api/mount": (id, b) => service.setMount(id, Number(b.slot), typeof b.speciesId === "string" ? b.speciesId : null),
     // 개발용 로그인 계정만: 돈을 받아 상점에서 직접 사 보게 한다(배포에서는 개발용 로그인이 꺼져 있다)
     "POST /api/dev/grant": async (id) => {
       if (!id.startsWith("dev:")) throw new Error("개발용 계정만 쓸 수 있어요");
       return service.devGrant(id);
     },
     "GET /api/rooms": async () => listRooms(),
+    "GET /api/underwater/channels": async () => listChannels(),
     "GET /api/maps": (id) => service.customMaps(id),
     "POST /api/maps": async (id, b) => {
       await service.saveCustomMap(id, { id: String(b.id), name: String(b.name ?? "내 맵"), data: b.data }, validateMap);

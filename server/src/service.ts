@@ -1,5 +1,5 @@
 import {
-  CODEX_REWARDS, EMOTES, ITEMS, MAX_CUSTOM_MAPS, MAX_BAIT, MAX_ROD, MAX_STONE_BUY, RODS, STONE_PRICE, STONES_PER_FISH, baitById, rodLevelOf, SECRET_EMOTES, codexRatio, itemById, sellPrice,
+  CODEX_REWARDS, EMOTES, SPECIES, ITEMS, MAX_CUSTOM_MAPS, MAX_BAIT, MAX_ROD, MAX_STONE_BUY, RODS, STONE_PRICE, STONES_PER_FISH, baitById, rodLevelOf, SECRET_EMOTES, codexRatio, itemById, sellPrice,
   speciesById,
 } from "@fishing/shared";
 import type { Appearance, CatchRecord, MapId, PlayerProfile } from "@fishing/shared";
@@ -173,6 +173,23 @@ export class GameService {
       if (!item || item.slot !== slot) throw new Error("이 칸에 입을 수 없어요");
       if (!p.ownedItems.includes(itemId)) throw new Error("가지고 있지 않아요");
       p.equipped[slot] = itemId;
+    }
+    await this.store.saveProfile(p);
+    return p;
+  }
+
+  /** 신화 탈것 칸(1~4)에 잡아 본 신화 물고기를 넣거나(speciesId) 비운다(null). 입은 것(equipped)의 "mount1"~"mount4" 로 저장한다 */
+  async setMount(playerId: string, slot: number, speciesId: string | null): Promise<PlayerProfile> {
+    if (![1, 2, 3, 4].includes(slot)) throw new Error("탈것 칸은 1~4번이에요");
+    const p = await this.mustProfile(playerId);
+    if (speciesId === null) {
+      delete p.equipped[`mount${slot}`];
+    } else {
+      const sp = SPECIES.find((q) => q.id === speciesId);
+      if (!sp || sp.rarity !== "mythic") throw new Error("신화 물고기만 탈 수 있어요");
+      if (!(await this.store.getCodex(playerId)).some((c) => c.speciesId === speciesId)) throw new Error("아직 잡지 못한 신화예요");
+      for (const n of [1, 2, 3, 4]) if (p.equipped[`mount${n}`] === speciesId) delete p.equipped[`mount${n}`]; // 같은 신화는 한 칸에만
+      p.equipped[`mount${slot}`] = speciesId;
     }
     await this.store.saveProfile(p);
     return p;
