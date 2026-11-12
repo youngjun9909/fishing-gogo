@@ -15,8 +15,9 @@ export function createGameServer(deps: Deps, validateMap: (data: unknown) => str
   const server = new Server({ transport: new WebSocketTransport({ pingInterval: 5000, pingMaxRetries: 6 }) }) // 응답이 30초 넘게 없어야 끊는다(기본은 약 6초: 탭이 뒤로 가거나 잠깐 느려져도 튕겼다);
   server.define("fishing", createFishingRoom(deps));
   // 방 목록: 공개이고 아직 자리가 있는 방만(꽉 차면 Colyseus가 잠가서 빠진다)
+  // 사람이 0명인 방(모두 끊겨서 자리만 남은 방)은 보이지 않게 한다. 방금 만든 방은 곧 방장이 들어오므로 잠깐 안 보일 뿐이다
   const listRooms = async () =>
-    (await matchMaker.query({ name: "fishing", private: false, locked: false })).map((r) => ({
+    (await matchMaker.query({ name: "fishing", private: false, locked: false })).filter((r) => (r.metadata?.players ?? r.clients) > 0).map((r) => ({
       code: r.roomId, title: r.metadata?.title ?? "", mapId: r.metadata?.mapId ?? "lake", hostName: r.metadata?.hostName ?? "", players: r.metadata?.players ?? r.clients, max: r.maxClients,
     }));
   const api = createApi(deps.service, deps.authenticate, validateMap, listRooms);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Room } from "colyseus.js";
 import type { PlayerProfile } from "@fishing/shared";
 import { initAudio, sfx } from "./audio";
@@ -42,7 +42,11 @@ export default function App() {
     })();
   }, [loadProfile]);
 
+  const entering = useRef(false);
   const enter = async (make: () => Promise<Room<any>>, mapId: string) => {
+    // 서버가 느릴 때 만들기를 두 번 눌러 방이 두 개 생기던 문제: 들어가는 중에는 다시 누른 것을 무시한다
+    if (entering.current) return;
+    entering.current = true;
     initAudio();
     setError("");
     try {
@@ -54,6 +58,8 @@ export default function App() {
       setError(e instanceof Error ? e.message : "방에 들어가지 못했어요");
       setPendingRoom(null);
       history.replaceState(null, "", location.pathname);
+    } finally {
+      entering.current = false;
     }
   };
 

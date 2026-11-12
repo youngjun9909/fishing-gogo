@@ -71,6 +71,20 @@ describe("방과 초대", () => {
     expect(await listed()).toBe(2);
   });
 
+  it("창을 닫고 새 방을 만들면 이전 방의 내 자리는 치워지고, 남은 사람이 있으면 방장이 넘어간다", async () => {
+    const solo = await h.open(["alice"]);
+    const duo = await h.open(["bob", "carol"]);
+    const [bob, carol] = duo.clients;
+    (solo.clients[0] as any).connection.close(); // 창을 닫음: 자리가 60초 동안 남는다
+    (bob as any).connection.close();
+    await new Promise((r) => setTimeout(r, 200));
+    await h.colyseus.sdk.create("fishing", { map: "lake", token: "alice", title: "새 방", isPublic: true });
+    await h.colyseus.sdk.create("fishing", { map: "lake", token: "bob", title: "새 방2", isPublic: true });
+    await until(() => !matchMaker.getLocalRoomById(solo.code)); // 아무도 없는 옛 방은 사라진다
+    await until(() => players(carol).length === 1 && carol.state.hostId === carol.sessionId); // 남은 사람이 방장
+    expect(duo.code).toBeTruthy();
+  });
+
   it("방장이 나가면 다음 사람이 방장이 된다", async () => {
     const { clients } = await h.open(["alice", "bob"]);
     const [alice, bob] = clients;

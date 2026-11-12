@@ -148,18 +148,31 @@ export function createFishingRoom(deps: RoomDeps) {
     async onAuth(_client: Client, options: { token?: string }) {
       const id = options?.token ? await deps.authenticate(options.token) : null;
       if (!id) throw new Error("로그인이 필요해요");
+      // 한 사람은 한 방에만 있는다: 창을 닫고 새 방을 만들거나 다른 방에 들어오면, 다른 방에 남은 자리(끊겨서 기다리던 자리 포함)는 치운다
+      for (const r of await matchMaker.query({ name: "fishing" })) {
+        if (r.roomId !== this.roomId) (matchMaker.getLocalRoomById(r.roomId) as any)?.evictPlayer?.(id, true);
+      }
+      this.evictPlayer(id, false);
+      return { playerId: id };
+    }
+
+    /** 나중에 들어온 접속이 이긴다: 끊겨서 남은 자리는 치우고, 아직 붙어 있는 옛 접속(다른 창·멈춘 창)은 내보낸다(4002) */
+    evictPlayer(playerId: string, passHost: boolean) {
       for (const [sid, p] of [...this.state.players.entries()]) {
-        if (p.playerId !== id) continue;
-        // 나중에 들어온 접속이 이긴다: 끊겨서 남은 자리는 치우고, 아직 붙어 있는 옛 접속(다른 창·멈춘 창)은 내보낸다(4002)
+        if (p.playerId !== playerId) continue;
         this.replaced.add(sid);
         this.away.get(sid)?.reject(false); // 끊겨서 기다리던 자리는 바로 놓아 준다(안 그러면 방 인원이 한동안 그대로 센다)
         this.clients.find((c) => c.sessionId === sid)?.leave(4002);
         this.cancelFishing(sid);
         this.state.players.delete(sid);
         this.limiters.delete(sid);
-        if (this.state.hostId === sid) this.state.hostId = "";
+        if (this.state.hostId === sid) {
+          // 다른 방에서 나가는 방장은 방장을 다음 사람에게 넘긴다. 같은 방에 다시 들어오는 경우는 곧 자기가 방장이 된다
+          const next = passHost ? this.state.players.keys().next() : { done: true as const, value: "" };
+          this.state.hostId = next.done ? "" : next.value;
+        }
+        this.syncHostName();
       }
-      return { playerId: id };
     }
 
     async onJoin(client: Client, _options: unknown, auth: { playerId: string }) {
@@ -369,6 +382,8 @@ export function createFishingRoom(deps: RoomDeps) {
       const e = typeof msg?.e === "number" && Number.isFinite(msg.e) ? Math.min(real, Math.max(real - REEL_LAG_MS, msg.e)) : real;
       const cursor = cursorAt(e, f.speed!);
       const ok = judge(cursor, f.target!, f.zone ?? f.species.zoneWidth);
+      // 타이밍 판정 기록: lag는 서버가 인정한 통신 지연(ms). 맞게 눌렀는데 실패한다는 제보가 있을 때 로그로 확인한다
+      console.log(`[reel] ok=${ok} cursor=${cursor.toFixed(2)} target=${f.target!.toFixed(2)} zone=${(f.zone ?? 0).toFixed(2)} real=${Math.round(real)} e=${Math.round(e)} sent=${typeof msg?.e === "number" ? Math.round(msg.e) : "-"}`);
       const tug = ok ? tugParams(f.species.rarity, this.rods.get(client.sessionId) ?? 0, deps.rng) : null;
       if (!tug) return void this.finish(client.sessionId, ok, ok ? "caught" : "escaped");
       // 전설·신화: 타이밍을 맞추면 이어서 힘겨루기(연타)
