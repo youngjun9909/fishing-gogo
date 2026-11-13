@@ -128,7 +128,9 @@ const QUALITY = [{ name: "높음", pr: 1.5, bloom: true }, { name: "보통", pr:
 const DEBUG = params.has("debug"); // 확인용 키(구역 바로 가기 등)는 주소에 ?debug 를 붙였을 때만 켠다
 const readSaved = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const writeSaved = (key: string, v: string) => { try { localStorage.setItem(key, v); } catch { /* 저장소를 못 쓰면 이번만 */ } };
-let quality = Math.min(2, Math.max(0, Number(params.get("q") ?? readSaved("uw.quality") ?? 0)));
+/** 휴대폰·태블릿처럼 손가락으로 조작하는 기기 (본 게임 RoomScreen 과 같은 판별) */
+const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+let quality = Math.min(2, Math.max(0, Number(params.get("q") ?? readSaved("uw.quality") ?? (isTouch ? 1 : 0)))); // 휴대폰은 보통 화질에서 시작한다(느리면 자동으로 더 내린다)
 function applyQuality() {
   const q = QUALITY[quality];
   eng.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q.pr));
@@ -1081,6 +1083,7 @@ const SEAT = 0.7; // 탈것 등에서 캐릭터 발까지 내려오는 높이 (�
 
 // ---- 입력, 카메라 ---------------------------------------------------------------
 const keys = new Set<string>();
+const stick = { x: 0, y: 0 }; // 휴대폰 이동 스틱: x 오른쪽, y 앞
 let teleZone = 0;
 let camYaw = Number(params.get("yaw") ?? Math.PI), camPitch = Number(params.get("pitch") ?? 0.25), camDist = Number(params.get("dist") ?? 8);
 window.addEventListener("keydown", (e) => {
@@ -1105,8 +1108,9 @@ const locked = () => document.pointerLockElement === canvas;
 // 클릭하면 마우스 시점 모드를 켠다. 마우스 고정이 되면 완전 고정, 안 되는 환경(앱 안의 미리보기 탭 등)에서는
 // 커서를 숨기고 마우스 움직임만으로 돌린다 (창 가장자리에 닿으면 멈춘다). Esc로 해제
 let freeLook = false;
+canvas.style.touchAction = "none"; // 손가락으로 끌 때 페이지가 밀리거나 확대되지 않게
 canvas.addEventListener("click", () => {
-  if (locked() || freeLook) return;
+  if (isTouch || locked() || freeLook) return; // 휴대폰에는 마우스 고정이 없다: 화면을 끌어서 돌린다
   Promise.resolve(canvas.requestPointerLock?.()).catch(() => {});
   setTimeout(() => { if (!locked()) { freeLook = true; canvas.style.cursor = "none"; } }, 150);
 });
@@ -1117,10 +1121,17 @@ const look = (dx: number, dy: number, k: number) => {
 };
 document.addEventListener("mousemove", (e) => { if (locked() || freeLook) look(e.movementX, e.movementY, 0.0025); });
 // 마우스 고정이 안 되는 환경(미리보기 창 등)에서는 누른 채 끌어서 돌린다
-let drag = false;
-canvas.addEventListener("pointerdown", () => (drag = true));
-window.addEventListener("pointerup", () => (drag = false));
-window.addEventListener("pointermove", (e) => { if (drag && !locked() && !freeLook) look(e.movementX, e.movementY, 0.005); });
+// 휴대폰에서는 이것이 시점 조작이다. 끄는 손가락 하나만 따라간다(다른 손가락은 이동 스틱) — iOS 는 movementX 를 주지 않아서 지난 위치와의 차이를 직접 잰다
+let dragId = -1, dragX = 0, dragY = 0;
+canvas.addEventListener("pointerdown", (e) => { dragId = e.pointerId; dragX = e.clientX; dragY = e.clientY; });
+const dragEnd = (e: PointerEvent) => { if (e.pointerId === dragId) dragId = -1; };
+window.addEventListener("pointerup", dragEnd);
+window.addEventListener("pointercancel", dragEnd);
+window.addEventListener("pointermove", (e) => {
+  if (e.pointerId !== dragId || locked() || freeLook) return;
+  look(e.clientX - dragX, e.clientY - dragY, isTouch ? 0.007 : 0.005);
+  dragX = e.clientX; dragY = e.clientY;
+});
 canvas.addEventListener("wheel", (e) => { camDist = Math.min(26, Math.max(3, camDist + e.deltaY * 0.01)); });
 function teleport(i: number) {
   const z = ZONES[i];
@@ -1136,6 +1147,7 @@ staEl.style.cssText = "position:fixed;left:50%;bottom:112px;transform:translateX
 const staFill = document.createElement("div");
 staFill.style.cssText = "height:100%;width:100%;background:#7be0c3;border-radius:4px";
 staEl.append(staFill);
+if (isTouch) { staEl.style.bottom = "auto"; staEl.style.top = "50px"; staEl.style.width = "130px"; }
 document.body.append(staEl);
 const WALL_STOP = 0.12; // 능선 발치(바위 더미 앞)에서 멈춘다
 let surfT = 0, exitOpen = false;
@@ -1166,6 +1178,7 @@ function movePlayer(dt: number) {
   if (keys.has("s") || keys.has("arrowdown")) wish.sub(f);
   if (keys.has("d") || keys.has("arrowright")) wish.add(r);
   if (keys.has("a") || keys.has("arrowleft")) wish.sub(r);
+  wish.addScaledVector(f, stick.y).addScaledVector(r, stick.x); // 휴대폰의 이동 스틱
   // 오르내리기는 보는 쪽으로 헤엄쳐서 한다(위아래 전용 키는 없다). Shift 는 빠르게 헤엄치기: 맨몸은 기력이 닳고, 탈것은 닳지 않는다
   const mounted = ridePhase === "ride", going = wish.lengthSq() > 0;
   const sprint = keys.has("shift") && going && (mounted || (!tired && stamina > 0));
@@ -1298,7 +1311,7 @@ function buildGates() {
 const MAP = 230;
 const mapEl = document.createElement("canvas");
 mapEl.width = mapEl.height = MAP * 2;
-mapEl.style.cssText = `position:fixed;right:12px;top:12px;width:${MAP}px;height:${MAP}px;border-radius:14px;border:2px solid rgba(255,255,255,.55);background:rgba(8,40,70,.93);pointer-events:none`;
+mapEl.style.cssText = `position:fixed;right:12px;top:12px;width:${isTouch ? 124 : MAP}px;height:${isTouch ? 124 : MAP}px;border-radius:14px;border:2px solid rgba(255,255,255,.55);background:rgba(8,40,70,.93);pointer-events:none`;
 document.body.append(mapEl);
 function drawMap() {
   const g = mapEl.getContext("2d")!, S = (MAP * 2) / (HALF * 2), P = (v: number) => (v + HALF) * S;
@@ -1466,12 +1479,14 @@ const helpEl = document.createElement("div");
 helpEl.style.cssText = "position:fixed;left:12px;top:12px;padding:12px 14px 12px;border-radius:16px;background:rgba(10,40,60,.62);border:2px solid rgba(255,255,255,.45);color:#fff;font:13px/1 sans-serif;z-index:6;display:none";
 const keycap = "display:inline-block;min-width:34px;padding:4px 7px;margin-right:9px;border-radius:7px;background:#fff;color:#17405c;font:bold 12px sans-serif;text-align:center;box-shadow:0 2px 0 rgba(0,20,40,.45)";
 helpEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px"><b style="font-size:14px">조작</b><button id="helpClose" style="border:0;background:none;color:#fff;font-size:17px;cursor:pointer;padding:0 0 0 18px;line-height:1">✕</button></div>`
-  + [["Shift", "빠르게 헤엄"], ["클릭", "마우스로 시점 돌리기"], ["Esc", "시점 풀기"], ["V", "1인칭 ↔ 3인칭"], ["H", "안내 닫기"]]
+  + (isTouch ? [["스틱", "보는 쪽으로 헤엄"], ["끌기", "화면을 끌어 시점 돌리기"], ["🏃", "빠르게 헤엄 켜고 끄기"], ["👁", "1인칭 ↔ 3인칭"], ["🗺", "지도 여닫기"], ["💬", "채팅"]]
+    : [["Shift", "빠르게 헤엄"], ["클릭", "마우스로 시점 돌리기"], ["Esc", "시점 풀기"], ["V", "1인칭 ↔ 3인칭"], ["H", "안내 닫기"]])
     .map(([k, d]) => `<div style="display:flex;align-items:center;margin-top:7px"><span style="${keycap}">${k}</span>${d}</div>`).join("");
 const helpBtn = document.createElement("button");
 helpBtn.textContent = "?";
 helpBtn.title = "조작 안내 (H)";
 helpBtn.style.cssText = "position:fixed;left:12px;top:12px;width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.6);background:rgba(10,40,60,.55);color:#fff;font:bold 15px sans-serif;cursor:pointer;z-index:6;display:none";
+if (isTouch) helpEl.style.top = "52px"; // 휴대폰: 위 가운데의 채널 단추와 겹치지 않게 한 줄 아래에 편다
 document.body.append(helpEl, helpBtn);
 function showHelp(on: boolean) {
   helpEl.style.display = on ? "" : "none";
@@ -1481,6 +1496,50 @@ function showHelp(on: boolean) {
 helpEl.querySelector("#helpClose")!.addEventListener("click", () => showHelp(false));
 helpBtn.addEventListener("click", () => showHelp(true));
 showHelp(readSaved("uw.help") !== "seen");
+
+// ---- 휴대폰 조작: 왼쪽 아래 이동 스틱, 오른쪽 아래 단추(빠르게·시점·지도·채팅). 시점은 화면을 끌어서 돌린다 ----
+if (isTouch) {
+  const base = "position:fixed;z-index:5;touch-action:none;user-select:none;-webkit-user-select:none";
+  const stickEl = document.createElement("div"), knob = document.createElement("i");
+  stickEl.style.cssText = `${base};left:16px;bottom:106px;width:108px;height:108px;border-radius:50%;background:rgba(255,255,255,.28);border:3px solid rgba(255,255,255,.7)`;
+  knob.style.cssText = "position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 3px 0 rgba(0,30,50,.3);pointer-events:none";
+  stickEl.append(knob);
+  let sid = -1;
+  const moveStick = (e: PointerEvent) => {
+    if (e.pointerId !== sid) return;
+    const b = stickEl.getBoundingClientRect(), R = b.width / 2;
+    let dx = (e.clientX - b.left - R) / R, dy = (e.clientY - b.top - R) / R;
+    const m = Math.hypot(dx, dy);
+    if (m > 1) { dx /= m; dy /= m; }
+    stick.x = Math.abs(dx) < 0.15 ? 0 : dx; stick.y = Math.abs(dy) < 0.15 ? 0 : -dy; // 가운데 근처는 멈춤
+    knob.style.transform = `translate(${dx * R * 0.6}px,${dy * R * 0.6}px)`;
+  };
+  const endStick = (e: PointerEvent) => { if (e.pointerId !== sid) return; sid = -1; stick.x = stick.y = 0; knob.style.transform = ""; };
+  stickEl.addEventListener("pointerdown", (e) => { sid = e.pointerId; stickEl.setPointerCapture(e.pointerId); moveStick(e); });
+  stickEl.addEventListener("pointermove", moveStick);
+  stickEl.addEventListener("pointerup", endStick);
+  stickEl.addEventListener("pointercancel", endStick);
+
+  const pad = document.createElement("div");
+  pad.style.cssText = `${base};right:14px;bottom:106px;display:grid;grid-template-columns:52px 52px;gap:9px`;
+  const mk = (icon: string, label: string, fn: (b: HTMLButtonElement) => void) => {
+    const b = document.createElement("button");
+    b.textContent = icon;
+    b.setAttribute("aria-label", label);
+    b.style.cssText = "width:52px;height:52px;border-radius:50%;border:3px solid rgba(255,255,255,.7);background:rgba(10,40,60,.5);font-size:22px;line-height:1;padding:0;touch-action:manipulation";
+    b.addEventListener("click", () => fn(b));
+    pad.append(b);
+  };
+  mk("👁", "1인칭과 3인칭 바꾸기", () => (firstPerson = !firstPerson));
+  mk("🗺", "지도 여닫기", () => (mapEl.style.display = mapEl.style.display === "none" ? "" : "none"));
+  mk("💬", "채팅", () => openChat());
+  mk("🏃", "빠르게 헤엄 켜고 끄기", (b) => { // 누를 때마다 켜고 끈다(손가락 둘은 스틱과 시점에 쓰니까)
+    const on = !keys.has("shift");
+    if (on) keys.add("shift"); else keys.delete("shift");
+    b.style.background = on ? "rgba(123,224,195,.85)" : "rgba(10,40,60,.5)";
+  });
+  document.body.append(stickEl, pad);
+}
 
 // ---- 멀티: 수중 탐험 채널 -------------------------------------------------------------
 // 개인이 만드는 방이 아니라 자동으로 열리는 채널(15명)에 들어간다. 같은 구역 사람만 화면에 보이고, 다른 구역 사람은 미니맵에만 나온다.
@@ -1532,8 +1591,16 @@ chatInput.style.cssText = "position:fixed;left:12px;bottom:14px;width:min(360px,
 document.body.append(chatLog, chatInput);
 // 화면이 좁으면 아래 가운데의 탈것 칸과 겹치므로 채팅을 그 위로 올린다
 const layoutChat = () => { const up = window.innerWidth < 1100 ? 100 : 0; chatInput.style.bottom = `${14 + up}px`; chatLog.style.bottom = `${58 + up}px`; };
-window.addEventListener("resize", layoutChat);
-layoutChat();
+if (isTouch) { // 휴대폰: 아래는 스틱과 단추 자리라 채팅은 왼쪽 위로 올리고, 입력 칸은 💬 단추를 눌렀을 때만 보인다
+  chatLog.style.cssText += ";bottom:auto;top:112px;width:min(300px,62vw);font-size:13px";
+  chatInput.style.cssText += ";bottom:auto;top:70px;width:min(300px,62vw);display:none";
+  chatInput.placeholder = "채팅 입력 후 전송";
+  chatInput.enterKeyHint = "send";
+  chatInput.addEventListener("blur", () => (chatInput.style.display = "none"));
+} else {
+  window.addEventListener("resize", layoutChat);
+  layoutChat();
+}
 function addChatLine(name: string, text: string) {
   const d = document.createElement("div");
   d.style.cssText = "background:rgba(10,40,60,.5);border-radius:10px;padding:3px 9px;align-self:flex-start;max-width:100%;word-break:break-all";
@@ -1547,6 +1614,7 @@ function addChatLine(name: string, text: string) {
 function openChat() {
   if (!room) { addChatLine("", "채널에 연결되지 않아 채팅을 쓸 수 없어요"); return; }
   keys.clear();
+  chatInput.style.display = "";
   chatInput.style.opacity = "1";
   chatInput.focus();
 }
