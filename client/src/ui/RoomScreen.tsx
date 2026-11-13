@@ -4,7 +4,7 @@ import { BAITS, BASE_MAPS, CODEX_REWARDS, CYCLE_MS, DAY_MS, EMOTES, MAX_PLAYERS,
 import type { MapId, PlayerProfile, Rarity, TugParams } from "@fishing/shared";
 import type { Joined } from "../App";
 import { sfx, startBgm, stopBgm } from "../audio";
-import { api, colyseus, inviteLink } from "../net";
+import { api, auth, colyseus, inviteLink } from "../net";
 import { GameScene } from "../three/GameScene";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
 import { Inventory, Modal, Shop } from "./Lobby";
@@ -161,9 +161,12 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
       const conn = (navigator as any).connection;
       const info = { code: c, hidden: document.hidden, sinceVisChangeSec: Math.round((Date.now() - lastVisChange) / 1000), online: navigator.onLine, net: conn?.effectiveType ?? "", rttMs: conn?.rtt ?? null, inRoomSec: Math.round((Date.now() - joinedAt) / 1000), mobile: isTouch, map: joined.mapId };
       const report = (reconnected: boolean) => void api("/api/diag", { ...info, reconnected, afterSec: Math.round((Date.now() - started) / 1000) }).catch(() => {});
+      const roomId = room.roomId;
+      let tries = 0;
       const tryAgain = async () => {
         try {
-          const back = await colyseus.reconnect(token);
+          // 자리 예약이 사라졌어도 방이 살아 있으면 같은 방 번호로 다시 들어간다(두 번째 시도부터)
+          const back = tries++ === 0 ? await colyseus.reconnect(token) : await colyseus.reconnect(token).catch(() => colyseus.joinById(roomId, { token: auth.token }));
           setLost(false);
           report(true);
           onRejoin(back);
