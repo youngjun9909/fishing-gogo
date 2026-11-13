@@ -91,6 +91,7 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
   useEffect(() => { setBaitCounts({ ...(profile.baits ?? {}) }); }, [profile.baits]);
   const chatId = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const leaving = useRef(false);
   const meRef = useRef(room.sessionId);
 
   useEffect(() => {
@@ -151,10 +152,12 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
     const joinedAt = Date.now();
     startBgm(joined.mapId || "lake");
 
+    let replaced = false;
+    room.onMessage("replaced", () => { replaced = true; });
     room.onLeave((c: number) => {
       // 정상 퇴장(1000, 4000)이 아니면 1분 동안 다시 접속을 시도한다
-      if (c === 1000 || c === 4000) return;
-      if (c === 4002) { onLeave(); return; } // 같은 계정으로 다른 곳에서 들어와 밀려났다
+      if (c === 1000 || c === 4000 || leaving.current) return;
+      if (c === 4002 || replaced) { onLeave(); return; } // 같은 계정으로 다른 곳에서 들어와 밀려났다
       setLost(true);
       const token = room.reconnectionToken;
       const started = Date.now();
@@ -210,6 +213,7 @@ export function RoomScreen({ joined, profile, reload, onLeave, onRejoin }: {
   };
 
   const leave = async () => {
+    leaving.current = true; // 나가기 뒤 닫힘 코드가 1006으로 오면 끊긴 줄 알고 다시 들어가 버리므로 미리 표시한다
     await room.leave();
     onLeave();
   };

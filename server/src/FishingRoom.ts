@@ -162,7 +162,9 @@ export function createFishingRoom(deps: RoomDeps) {
         if (p.playerId !== playerId) continue;
         this.replaced.add(sid);
         this.away.get(sid)?.reject(false); // 끊겨서 기다리던 자리는 바로 놓아 준다(안 그러면 방 인원이 한동안 그대로 센다)
-        this.clients.find((c) => c.sessionId === sid)?.leave(4002);
+        const old = this.clients.find((c) => c.sessionId === sid);
+        old?.send("replaced"); // 닫힘 코드가 1006으로 바뀌어 전해져도 밀려난 것을 알 수 있게 먼저 알린다
+        old?.leave(4002);
         this.cancelFishing(sid);
         this.state.players.delete(sid);
         this.limiters.delete(sid);
