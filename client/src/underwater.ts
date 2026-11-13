@@ -977,7 +977,7 @@ function startSummon(slot: number) {
 function callMount(slot: number) {
   if (trans || exitOpen || loading || ridePhase === "summon" || ridePhase === "dismiss") return;
   if (ridePhase === "ride") { nextSlot = slot === rideSlot || !mountSlots[slot] ? -1 : slot; ridePhase = "dismiss"; rideT0 = t; fxT0 = t; fxUp = false; return; }
-  if (!mountSlots[slot]) { titleEl.textContent = `${slot + 1}번 칸이 비어 있어요 (메인 화면 🐉 탈것에서 넣어요)`; titleEl.style.opacity = "1"; titleUntil = t + 2; return; }
+  if (!mountSlots[slot]) { titleEl.textContent = `${slot + 1}번 칸이 비어 있어요. 메인 화면의 탈것에서 넣어요`; titleEl.style.opacity = "1"; titleUntil = t + 2; return; }
   startSummon(slot);
 }
 // 소환·해제 빛: 발밑에서 퍼지는(해제 때는 모여드는) 고리 둘과 몸을 감아 오르는 빛 알갱이
@@ -1100,7 +1100,7 @@ window.addEventListener("keydown", (e) => {
   if (dg && !e.repeat) callMount(Number(dg[1]) - 1);
   if (DEBUG && (k === "[" || k === "]")) { teleZone = (teleZone + (k === "]" ? 1 : ZONES.length - 1)) % ZONES.length; teleport(teleZone); } // 확인용: 구역 바로 가기
   if (k === "h") showHelp(helpEl.style.display === "none");
-  if (k === "m") mapEl.style.display = mapEl.style.display === "none" ? "" : "none"; // 미니맵 여닫기
+  if (k === "m") setMap(mapEl.style.display === "none"); // 미니맵 여닫기
 });
 window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 const canvas = eng.renderer.domElement;
@@ -1122,15 +1122,25 @@ const look = (dx: number, dy: number, k: number) => {
 document.addEventListener("mousemove", (e) => { if (locked() || freeLook) look(e.movementX, e.movementY, 0.0025); });
 // 마우스 고정이 안 되는 환경(미리보기 창 등)에서는 누른 채 끌어서 돌린다
 // 휴대폰에서는 이것이 시점 조작이다. 끄는 손가락 하나만 따라간다(다른 손가락은 이동 스틱) — iOS 는 movementX 를 주지 않아서 지난 위치와의 차이를 직접 잰다
-let dragId = -1, dragX = 0, dragY = 0;
-canvas.addEventListener("pointerdown", (e) => { dragId = e.pointerId; dragX = e.clientX; dragY = e.clientY; });
-const dragEnd = (e: PointerEvent) => { if (e.pointerId === dragId) dragId = -1; };
+const touches = new Map<number, { x: number; y: number }>(); // 화면에 닿아 있는 손가락(또는 누른 마우스)
+let pinch = 0;
+canvas.addEventListener("pointerdown", (e) => { touches.set(e.pointerId, { x: e.clientX, y: e.clientY }); pinch = 0; });
+const dragEnd = (e: PointerEvent) => { touches.delete(e.pointerId); pinch = 0; };
 window.addEventListener("pointerup", dragEnd);
 window.addEventListener("pointercancel", dragEnd);
 window.addEventListener("pointermove", (e) => {
-  if (e.pointerId !== dragId || locked() || freeLook) return;
-  look(e.clientX - dragX, e.clientY - dragY, isTouch ? 0.007 : 0.005);
-  dragX = e.clientX; dragY = e.clientY;
+  const p = touches.get(e.pointerId);
+  if (!p || locked() || freeLook) return;
+  if (touches.size >= 2) { // 두 손가락: 벌리면 카메라가 가까워지고 오므리면 멀어진다(마우스 휠과 같은 범위)
+    p.x = e.clientX; p.y = e.clientY;
+    const [f1, f2] = [...touches.values()];
+    const d = Math.hypot(f1.x - f2.x, f1.y - f2.y);
+    if (pinch) camDist = Math.min(26, Math.max(3, camDist - (d - pinch) * 0.05));
+    pinch = d;
+    return;
+  }
+  look(e.clientX - p.x, e.clientY - p.y, isTouch ? 0.007 : 0.005);
+  p.x = e.clientX; p.y = e.clientY;
 });
 canvas.addEventListener("wheel", (e) => { camDist = Math.min(26, Math.max(3, camDist + e.deltaY * 0.01)); });
 function teleport(i: number) {
@@ -1311,8 +1321,26 @@ function buildGates() {
 const MAP = 230;
 const mapEl = document.createElement("canvas");
 mapEl.width = mapEl.height = MAP * 2;
-mapEl.style.cssText = `position:fixed;right:12px;top:12px;width:${isTouch ? 124 : MAP}px;height:${isTouch ? 124 : MAP}px;border-radius:14px;border:2px solid rgba(255,255,255,.55);background:rgba(8,40,70,.93);pointer-events:none`;
+mapEl.style.cssText = `position:fixed;right:12px;top:12px;width:${isTouch ? 108 : MAP}px;height:${isTouch ? 108 : MAP}px;border-radius:14px;border:2px solid rgba(255,255,255,.55);background:rgba(8,40,70,.93);pointer-events:none`;
 document.body.append(mapEl);
+const ICON = (d: string, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const mapX = document.createElement("button"), mapOpen = document.createElement("button");
+mapX.innerHTML = ICON('<path d="M6 6l12 12M18 6L6 18"/>', 14);
+mapX.setAttribute("aria-label", "지도 닫기");
+mapX.style.cssText = "position:fixed;right:17px;top:17px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,20,40,.75);display:none;place-items:center;padding:0;z-index:6";
+mapOpen.innerHTML = ICON('<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14"/>', 20);
+mapOpen.setAttribute("aria-label", "지도 열기");
+mapOpen.style.cssText = "position:fixed;right:12px;top:12px;width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,.6);background:rgba(10,40,60,.6);display:none;place-items:center;padding:0;z-index:6";
+document.body.append(mapX, mapOpen);
+function setMap(on: boolean) {
+  mapEl.style.display = on ? "" : "none";
+  if (!isTouch) return; // 컴퓨터는 M 키로만 여닫는다
+  mapX.style.display = on ? "grid" : "none";
+  mapOpen.style.display = on ? "none" : "grid";
+}
+mapX.addEventListener("click", () => setMap(false));
+mapOpen.addEventListener("click", () => setMap(true));
+setMap(true);
 function drawMap() {
   const g = mapEl.getContext("2d")!, S = (MAP * 2) / (HALF * 2), P = (v: number) => (v + HALF) * S;
   g.clearRect(0, 0, MAP * 2, MAP * 2);
@@ -1379,7 +1407,7 @@ vignetteEl.style.cssText = "position:fixed;inset:0;pointer-events:none;opacity:0
 const flashEl = document.createElement("div"); // 이동 순간의 섬광
 flashEl.style.cssText = "position:fixed;inset:0;pointer-events:none;opacity:0;background:#dff8ff";
 const titleEl = document.createElement("div"); // 도착 구역 이름 (위쪽에 작게 잠깐)
-titleEl.style.cssText = "position:fixed;left:50%;top:14%;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .5s;padding:8px 22px;border-radius:24px;background:rgba(20,70,110,.6);color:#fff;font:bold 22px sans-serif;text-shadow:0 1px 4px rgba(0,40,70,.6);white-space:nowrap";
+titleEl.style.cssText = `position:fixed;left:50%;top:14%;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .5s;padding:8px 22px;border-radius:24px;background:rgba(20,70,110,.6);color:#fff;font:bold ${isTouch ? 15 : 22}px/1.35 sans-serif;text-shadow:0 1px 4px rgba(0,40,70,.6);max-width:88vw;box-sizing:border-box;text-align:center;word-break:keep-all`; // 좁은 화면에서는 줄을 바꿔 잘리지 않게
 document.body.append(vignetteEl, flashEl, titleEl);
 let trans: { t0: number; gate: Gate; teleported: boolean } | null = null;
 let gateCooldown = 0;
@@ -1479,7 +1507,7 @@ const helpEl = document.createElement("div");
 helpEl.style.cssText = "position:fixed;left:12px;top:12px;padding:12px 14px 12px;border-radius:16px;background:rgba(10,40,60,.62);border:2px solid rgba(255,255,255,.45);color:#fff;font:13px/1 sans-serif;z-index:6;display:none";
 const keycap = "display:inline-block;min-width:34px;padding:4px 7px;margin-right:9px;border-radius:7px;background:#fff;color:#17405c;font:bold 12px sans-serif;text-align:center;box-shadow:0 2px 0 rgba(0,20,40,.45)";
 helpEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px"><b style="font-size:14px">조작</b><button id="helpClose" style="border:0;background:none;color:#fff;font-size:17px;cursor:pointer;padding:0 0 0 18px;line-height:1">✕</button></div>`
-  + (isTouch ? [["스틱", "보는 쪽으로 헤엄"], ["끌기", "화면을 끌어 시점 돌리기"], ["🏃", "빠르게 헤엄 켜고 끄기"], ["👁", "1인칭 ↔ 3인칭"], ["🗺", "지도 여닫기"], ["💬", "채팅"]]
+  + (isTouch ? [["스틱", "보는 쪽으로 헤엄"], ["끌기", "화면을 끌어 시점 돌리기"], ["두 손가락", "벌리고 오므려 거리 조절"], ["달리기", "누르고 있는 동안 빠르게"], ["시점", "1인칭 ↔ 3인칭"]]
     : [["Shift", "빠르게 헤엄"], ["클릭", "마우스로 시점 돌리기"], ["Esc", "시점 풀기"], ["V", "1인칭 ↔ 3인칭"], ["H", "안내 닫기"]])
     .map(([k, d]) => `<div style="display:flex;align-items:center;margin-top:7px"><span style="${keycap}">${k}</span>${d}</div>`).join("");
 const helpBtn = document.createElement("button");
@@ -1496,50 +1524,6 @@ function showHelp(on: boolean) {
 helpEl.querySelector("#helpClose")!.addEventListener("click", () => showHelp(false));
 helpBtn.addEventListener("click", () => showHelp(true));
 showHelp(readSaved("uw.help") !== "seen");
-
-// ---- 휴대폰 조작: 왼쪽 아래 이동 스틱, 오른쪽 아래 단추(빠르게·시점·지도·채팅). 시점은 화면을 끌어서 돌린다 ----
-if (isTouch) {
-  const base = "position:fixed;z-index:5;touch-action:none;user-select:none;-webkit-user-select:none";
-  const stickEl = document.createElement("div"), knob = document.createElement("i");
-  stickEl.style.cssText = `${base};left:16px;bottom:106px;width:108px;height:108px;border-radius:50%;background:rgba(255,255,255,.28);border:3px solid rgba(255,255,255,.7)`;
-  knob.style.cssText = "position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 3px 0 rgba(0,30,50,.3);pointer-events:none";
-  stickEl.append(knob);
-  let sid = -1;
-  const moveStick = (e: PointerEvent) => {
-    if (e.pointerId !== sid) return;
-    const b = stickEl.getBoundingClientRect(), R = b.width / 2;
-    let dx = (e.clientX - b.left - R) / R, dy = (e.clientY - b.top - R) / R;
-    const m = Math.hypot(dx, dy);
-    if (m > 1) { dx /= m; dy /= m; }
-    stick.x = Math.abs(dx) < 0.15 ? 0 : dx; stick.y = Math.abs(dy) < 0.15 ? 0 : -dy; // 가운데 근처는 멈춤
-    knob.style.transform = `translate(${dx * R * 0.6}px,${dy * R * 0.6}px)`;
-  };
-  const endStick = (e: PointerEvent) => { if (e.pointerId !== sid) return; sid = -1; stick.x = stick.y = 0; knob.style.transform = ""; };
-  stickEl.addEventListener("pointerdown", (e) => { sid = e.pointerId; stickEl.setPointerCapture(e.pointerId); moveStick(e); });
-  stickEl.addEventListener("pointermove", moveStick);
-  stickEl.addEventListener("pointerup", endStick);
-  stickEl.addEventListener("pointercancel", endStick);
-
-  const pad = document.createElement("div");
-  pad.style.cssText = `${base};right:14px;bottom:106px;display:grid;grid-template-columns:52px 52px;gap:9px`;
-  const mk = (icon: string, label: string, fn: (b: HTMLButtonElement) => void) => {
-    const b = document.createElement("button");
-    b.textContent = icon;
-    b.setAttribute("aria-label", label);
-    b.style.cssText = "width:52px;height:52px;border-radius:50%;border:3px solid rgba(255,255,255,.7);background:rgba(10,40,60,.5);font-size:22px;line-height:1;padding:0;touch-action:manipulation";
-    b.addEventListener("click", () => fn(b));
-    pad.append(b);
-  };
-  mk("👁", "1인칭과 3인칭 바꾸기", () => (firstPerson = !firstPerson));
-  mk("🗺", "지도 여닫기", () => (mapEl.style.display = mapEl.style.display === "none" ? "" : "none"));
-  mk("💬", "채팅", () => openChat());
-  mk("🏃", "빠르게 헤엄 켜고 끄기", (b) => { // 누를 때마다 켜고 끈다(손가락 둘은 스틱과 시점에 쓰니까)
-    const on = !keys.has("shift");
-    if (on) keys.add("shift"); else keys.delete("shift");
-    b.style.background = on ? "rgba(123,224,195,.85)" : "rgba(10,40,60,.5)";
-  });
-  document.body.append(stickEl, pad);
-}
 
 // ---- 멀티: 수중 탐험 채널 -------------------------------------------------------------
 // 개인이 만드는 방이 아니라 자동으로 열리는 채널(15명)에 들어간다. 같은 구역 사람만 화면에 보이고, 다른 구역 사람은 미니맵에만 나온다.
@@ -1591,15 +1575,37 @@ chatInput.style.cssText = "position:fixed;left:12px;bottom:14px;width:min(360px,
 document.body.append(chatLog, chatInput);
 // 화면이 좁으면 아래 가운데의 탈것 칸과 겹치므로 채팅을 그 위로 올린다
 const layoutChat = () => { const up = window.innerWidth < 1100 ? 100 : 0; chatInput.style.bottom = `${14 + up}px`; chatLog.style.bottom = `${58 + up}px`; };
-if (isTouch) { // 휴대폰: 아래는 스틱과 단추 자리라 채팅은 왼쪽 위로 올리고, 입력 칸은 💬 단추를 눌렀을 때만 보인다
-  chatLog.style.cssText += ";bottom:auto;top:112px;width:min(300px,62vw);font-size:13px";
-  chatInput.style.cssText += ";bottom:auto;top:70px;width:min(300px,62vw);display:none";
-  chatInput.placeholder = "채팅 입력 후 전송";
+// 휴대폰: 채팅은 평소에 화면에 없다. 채팅 단추를 누르면 위쪽에 창이 뜨고(키보드에 가리지 않게) ✕ 로 닫는다
+const chatPanel = document.createElement("div");
+let chatUnread: HTMLElement | null = null; // 창이 닫혀 있을 때 새 글이 오면 채팅 단추에 찍는 점
+if (isTouch) {
+  chatPanel.style.cssText = "position:fixed;left:10px;right:10px;top:56px;max-height:50vh;display:none;flex-direction:column;gap:8px;padding:12px;border-radius:16px;background:rgba(10,40,60,.92);border:2px solid rgba(255,255,255,.5);z-index:8;font-family:sans-serif;color:#fff";
+  const head = document.createElement("div");
+  head.style.cssText = "display:flex;align-items:center;justify-content:space-between;font:bold 15px sans-serif";
+  head.innerHTML = `<span>채팅</span><button aria-label="채팅 닫기" style="border:0;background:none;padding:2px 4px;display:grid;place-items:center">${ICON('<path d="M6 6l12 12M18 6L6 18"/>', 18)}</button>`;
+  head.querySelector("button")!.addEventListener("click", () => closeChat());
+  chatLog.style.cssText = "display:flex;flex-direction:column;gap:4px;overflow-y:auto;min-height:48px;font:14px/1.4 sans-serif";
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:8px";
+  chatInput.style.cssText = "flex:1;min-width:0;box-sizing:border-box;padding:10px 14px;border-radius:18px;border:2px solid rgba(255,255,255,.7);background:rgba(255,255,255,.12);color:#fff;font:16px sans-serif;outline:none"; // 16px: 아이폰이 입력 칸을 누를 때 화면을 확대하지 않는 크기
+  chatInput.placeholder = "채팅 입력";
   chatInput.enterKeyHint = "send";
-  chatInput.addEventListener("blur", () => (chatInput.style.display = "none"));
+  const send = document.createElement("button");
+  send.textContent = "보내기";
+  send.style.cssText = "border:0;border-radius:18px;padding:0 16px;background:#7be0c3;color:#17405c;font:bold 14px sans-serif";
+  send.addEventListener("click", () => { sendChat(); chatInput.focus(); });
+  row.append(chatInput, send);
+  chatPanel.append(head, chatLog, row);
+  document.body.append(chatPanel);
 } else {
   window.addEventListener("resize", layoutChat);
   layoutChat();
+}
+function closeChat() { chatPanel.style.display = "none"; chatInput.blur(); }
+function sendChat() {
+  const text = chatInput.value.trim();
+  if (text) room?.send("chat", { text });
+  chatInput.value = "";
 }
 function addChatLine(name: string, text: string) {
   const d = document.createElement("div");
@@ -1608,26 +1614,92 @@ function addChatLine(name: string, text: string) {
   b.textContent = name ? name + "  " : "";
   d.append(b, text);
   chatLog.append(d);
-  while (chatLog.children.length > 8) chatLog.firstChild!.remove();
-  setTimeout(() => { d.style.transition = "opacity 1.5s"; d.style.opacity = "0.35"; }, 12000);
+  while (chatLog.children.length > (isTouch ? 40 : 8)) chatLog.firstChild!.remove();
+  if (isTouch) { // 창 안에서는 흐려지지 않고 맨 아래 글이 보이게 한다. 닫혀 있으면 채팅 단추에 점을 찍는다
+    chatLog.scrollTop = chatLog.scrollHeight;
+    if (name && chatUnread && chatPanel.style.display === "none") chatUnread.style.display = "";
+  } else setTimeout(() => { d.style.transition = "opacity 1.5s"; d.style.opacity = "0.35"; }, 12000);
 }
 function openChat() {
+  if (isTouch) {
+    if (!room && !chatLog.children.length) addChatLine("", "채널에 연결되지 않아 채팅을 쓸 수 없어요");
+    chatPanel.style.display = "flex";
+    if (chatUnread) chatUnread.style.display = "none";
+    chatLog.scrollTop = chatLog.scrollHeight;
+    chatInput.focus();
+    return;
+  }
   if (!room) { addChatLine("", "채널에 연결되지 않아 채팅을 쓸 수 없어요"); return; }
   keys.clear();
-  chatInput.style.display = "";
   chatInput.style.opacity = "1";
   chatInput.focus();
 }
 chatInput.addEventListener("keydown", (e) => {
   e.stopPropagation();
   if (e.key !== "Enter" && e.key !== "Escape") return;
-  const text = chatInput.value.trim();
-  if (e.key === "Enter" && text) room?.send("chat", { text });
-  chatInput.value = "";
+  if (e.key === "Enter") sendChat(); else chatInput.value = "";
+  if (isTouch) { if (e.key === "Escape") closeChat(); return; } // 휴대폰은 창을 열어 둔 채 이어서 쓴다
   chatInput.style.opacity = ".55";
   chatInput.blur();
 });
 chatInput.addEventListener("keyup", (e) => e.stopPropagation());
+
+// ---- 휴대폰 조작: 왼쪽 아래 이동 스틱, 오른쪽 아래 단추(시점·채팅·달리기). 시점은 화면을 끌어서, 카메라 거리는 두 손가락으로 ----
+if (isTouch) {
+  const base = "position:fixed;z-index:5;touch-action:none;user-select:none;-webkit-user-select:none";
+  const stickEl = document.createElement("div"), knob = document.createElement("i");
+  stickEl.style.cssText = `${base};left:16px;bottom:106px;width:108px;height:108px;border-radius:50%;background:rgba(255,255,255,.28);border:3px solid rgba(255,255,255,.7)`;
+  knob.style.cssText = "position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 3px 0 rgba(0,30,50,.3);pointer-events:none";
+  stickEl.append(knob);
+  let sid = -1;
+  const moveStick = (e: PointerEvent) => {
+    if (e.pointerId !== sid) return;
+    const b = stickEl.getBoundingClientRect(), R = b.width / 2;
+    let dx = (e.clientX - b.left - R) / R, dy = (e.clientY - b.top - R) / R;
+    const m = Math.hypot(dx, dy);
+    if (m > 1) { dx /= m; dy /= m; }
+    stick.x = Math.abs(dx) < 0.15 ? 0 : dx; stick.y = Math.abs(dy) < 0.15 ? 0 : -dy; // 가운데 근처는 멈춤
+    knob.style.transform = `translate(${dx * R * 0.6}px,${dy * R * 0.6}px)`;
+  };
+  const endStick = (e: PointerEvent) => { if (e.pointerId !== sid) return; sid = -1; stick.x = stick.y = 0; knob.style.transform = ""; };
+  stickEl.addEventListener("pointerdown", (e) => { sid = e.pointerId; moveStick(e); try { stickEl.setPointerCapture(e.pointerId); } catch { /* 손가락을 못 잡아도 스틱 위에서는 동작한다 */ } });
+  stickEl.addEventListener("pointermove", moveStick);
+  stickEl.addEventListener("pointerup", endStick);
+  stickEl.addEventListener("pointercancel", endStick);
+
+  // 단추: 그림과 글자를 함께 넣어 무엇인지 바로 알게 한다
+  const OFF = "rgba(10,40,60,.55)";
+  const mk = (svg: string, label: string, size: number) => {
+    const b = document.createElement("button");
+    b.innerHTML = `${ICON(svg, size > 60 ? 26 : 20)}<span style="font:bold ${size > 60 ? 12 : 10}px sans-serif;color:#fff;margin-top:1px">${label}</span>`;
+    b.style.cssText = `position:relative;width:${size}px;height:${size}px;border-radius:50%;border:3px solid rgba(255,255,255,.7);background:${OFF};display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0;touch-action:none;user-select:none;-webkit-user-select:none`;
+    return b;
+  };
+  const viewBtn = mk('<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', "시점", 54);
+  viewBtn.addEventListener("click", () => (firstPerson = !firstPerson));
+  const chatBtn = mk('<path d="M4 5h16v11H10l-5 4v-4H4z"/>', "채팅", 54);
+  chatBtn.addEventListener("click", () => openChat());
+  const dot = document.createElement("i");
+  dot.style.cssText = "position:absolute;right:2px;top:2px;width:13px;height:13px;border-radius:50%;background:#ff5a6e;border:2px solid #fff;display:none";
+  chatBtn.append(dot);
+  chatUnread = dot;
+  // 달리기: 누르고 있는 동안만 빠르게 헤엄친다. 누른 채 손가락을 움직이면 시점도 돌아간다(달리면서 방향을 틀 수 있게)
+  const runBtn = mk('<path d="M5 6l6 6-6 6M13 6l6 6-6 6"/>', "달리기", 76);
+  let rid = -1, rx = 0, ry = 0;
+  runBtn.addEventListener("pointerdown", (e) => { rid = e.pointerId; rx = e.clientX; ry = e.clientY; keys.add("shift"); runBtn.style.background = "rgba(123,224,195,.85)"; try { runBtn.setPointerCapture(rid); } catch { /* 손가락을 못 잡아도 단추 위에서는 동작한다 */ } });
+  runBtn.addEventListener("pointermove", (e) => { if (e.pointerId !== rid) return; look(e.clientX - rx, e.clientY - ry, 0.007); rx = e.clientX; ry = e.clientY; });
+  const endRun = (e: PointerEvent) => { if (e.pointerId !== rid) return; rid = -1; keys.delete("shift"); runBtn.style.background = OFF; };
+  runBtn.addEventListener("pointerup", endRun);
+  runBtn.addEventListener("pointercancel", endRun);
+  runBtn.addEventListener("contextmenu", (e) => e.preventDefault()); // 길게 눌러도 메뉴가 뜨지 않게
+
+  const pad = document.createElement("div"), top = document.createElement("div");
+  pad.style.cssText = `${base};right:14px;bottom:106px;display:flex;flex-direction:column;align-items:flex-end;gap:10px`;
+  top.style.cssText = "display:flex;gap:10px";
+  top.append(viewBtn, chatBtn);
+  pad.append(top, runBtn);
+  document.body.append(stickEl, pad);
+}
 
 let myBubble: THREE.Sprite | null = null, myBubbleUntil = 0;
 /** id 가 없으면 자동 배정(앞 채널부터 채운다), 있으면 그 채널로 직접 들어간다 */
@@ -1645,7 +1717,7 @@ async function joinChannel(id?: string) {
   r.onLeave(() => { if (room !== r) return; room = null; addChatLine("", "채널 연결이 끊겼어요. 혼자 모드로 이어집니다."); }); // 채널을 옮기느라 떠난 옛 채널은 무시한다
   mySid = r.sessionId;
   room = r;
-  addChatLine("", "채널에 들어왔어요. Enter 로 채팅할 수 있어요.");
+  addChatLine("", isTouch ? "채널에 들어왔어요." : "채널에 들어왔어요. Enter 로 채팅할 수 있어요.");
 }
 
 // 채널 고르기: 위 가운데 단추를 누르면 채널 목록이 열리고, 고르면 그 채널로 옮긴다(친구와 같은 채널에 갈 때)
