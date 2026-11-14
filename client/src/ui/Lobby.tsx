@@ -224,7 +224,8 @@ export function Inventory({ onClose, reload, rod, canSell = true, uw, extra }: {
   const picked = (list ?? []).filter((c) => sel.has(c.id));
   const total = picked.reduce((a, c) => a + Math.round(sellPrice(speciesById(c.speciesId)!, c.size, rod) * mul), 0);
   const stonesTotal = picked.reduce((a, c) => a + STONES_PER_FISH[speciesById(c.speciesId)!.rarity], 0);
-  const sorted = [...(list ?? [])].sort((a, b) => b.caughtAt - a.caughtAt);
+  const mine = (list ?? []).filter((c) => !!uw === c.speciesId.startsWith("uw-")); // 수중 탐험에서는 수중에서 잡은 것만, 낚시 방에서는 낚시로 잡은 것만 보여 준다
+  const sorted = [...mine].sort((a, b) => b.caughtAt - a.caughtAt);
 
   const sell = async () => {
     try {
@@ -240,7 +241,7 @@ export function Inventory({ onClose, reload, rod, canSell = true, uw, extra }: {
   };
 
   return (
-    <Modal title={`🎒 인벤토리 (${list?.length ?? 0}마리)`} onClose={onClose}>
+    <Modal title={`🎒 인벤토리 (${mine.length}마리)`} onClose={onClose}>
       {canSell ? (
         <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
           <button className="btn small ghost" onClick={() => setSel(new Set(sorted.filter((c) => sellable(c.speciesId)).map((c) => c.id)))}>모두 선택</button>
@@ -257,7 +258,7 @@ export function Inventory({ onClose, reload, rod, canSell = true, uw, extra }: {
           물고기 목록을 불러오지 못했어요: {loadError} <button className="btn small ghost" onClick={refetch}>다시 시도</button>
         </p>
       )}
-      {list && !list.length && <p className="hint">아직 잡은 물고기가 없어요. 방을 만들어 낚시를 떠나 볼까요?</p>}
+      {list && !mine.length && <p className="hint">{uw ? "아직 수중에서 잡은 것이 없어요. 작살총으로 물고기를 잡아 볼까요?" : "아직 잡은 물고기가 없어요. 방을 만들어 낚시를 떠나 볼까요?"}</p>}
       <div className="grid">
         {sorted.map((c) => {
           const sp = speciesById(c.speciesId)!;
@@ -265,7 +266,7 @@ export function Inventory({ onClose, reload, rod, canSell = true, uw, extra }: {
             <button
               key={c.id}
               className={`cell ${sel.has(c.id) ? "sel" : ""}`}
-              style={sellable(c.speciesId) ? undefined : { opacity: 0.55 }}
+              
               onClick={() => canSell && sellable(c.speciesId) && setSel((s) => { const n = new Set(s); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })}
             >
               <FishIcon sp={sp} size={92} />
