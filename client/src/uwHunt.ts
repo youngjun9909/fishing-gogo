@@ -67,7 +67,6 @@ export function createHunt(ctx: HuntCtx) {
   const handA = new THREE.Vector3(), handB = new THREE.Vector3();
   let wobAmp = 0.04;
   const wob = new THREE.Vector2();
-  const tally = new Map<string, number>();
   let nearShell = "", nearChest = "";
   let tug: { fid: string; p: UwTug; t0: number; tire: number; ten: number; phase: "rest" | "run" | "hold" | "beat"; soon: boolean; band: [number, number] | null; hold: number; beats: number[] | null; beatI: number } | null = null; // 힘겨루기 중(상태는 서버가 0.1초마다 보내 준다)
   let reelOn = false; // 감기 단추(마우스·Space·화면 단추)를 누르고 있는지
@@ -87,8 +86,6 @@ export function createHunt(ctx: HuntCtx) {
   const cross = document.createElement("div");
   cross.style.cssText = "position:fixed;left:0;top:0;width:34px;height:34px;margin:-17px 0 0 -17px;border:2px solid #fff;border-radius:50%;pointer-events:none;z-index:4;display:none;box-shadow:0 0 6px rgba(0,30,50,.6)";
   cross.innerHTML = '<i style="position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px;border-radius:50%;background:#fff"></i>';
-  const panel = document.createElement("div");
-  panel.style.cssText = "position:fixed;left:12px;top:52px;max-width:230px;padding:8px 13px;border-radius:16px;background:rgba(255,255,255,.88);color:var(--ink);font:14px/1.5 var(--font);pointer-events:none;z-index:4;display:none";
   const toast = document.createElement("div");
   toast.style.cssText = "position:fixed;left:50%;top:23%;transform:translateX(-50%);width:max-content;max-width:92vw;box-sizing:border-box;text-align:center;padding:9px 20px;border-radius:999px;background:var(--ink);color:#fff;font:17px var(--font);pointer-events:none;z-index:7;opacity:0;transition:opacity .3s";
   const prompt = document.createElement("div");
@@ -129,7 +126,7 @@ export function createHunt(ctx: HuntCtx) {
     card.style.opacity = "1"; cardUntil = performance.now() + 2600;
   };
   document.body.append(card);
-  document.body.append(cross, panel, toast, prompt, gauge, edge, cue, guide);
+  document.body.append(cross, toast, prompt, gauge, edge, cue, guide);
   let toastUntil = 0, guideUntil = 0;
   const say = (text: string, ms = 1800) => { toast.textContent = text; toast.style.opacity = "1"; toastUntil = performance.now() + ms; };
 
@@ -270,11 +267,11 @@ export function createHunt(ctx: HuntCtx) {
     });
     r.onMessage("bossend", (m: { rank: number; total: number; coins: number; stones: number; title: string }) => say(`🏆 보스 격파! ${m.rank}위/${m.total}명 · 🪙 ${m.coins} 💎 ${m.stones} · 칭호「${m.title}」`, 7000));
     r.onMessage("newfish", (m: { fid: string }) => { newFish.add(m.fid); });
-    r.onMessage("gathered", (m: { kind: string; cm: number; isNew: boolean }) => { showCatch(m.kind, m.cm, m.isNew); tally.set(m.kind, (tally.get(m.kind) ?? 0) + 1); });
+    r.onMessage("gathered", (m: { kind: string; cm: number; isNew: boolean }) => { showCatch(m.kind, m.cm, m.isNew); });
   }
 
   function finishCatch(sid: string, c: { name: string; cm: number; by: string; fid: string }) {
-    if (sid === mySid) { showCatch(c.name, c.cm, newFish.delete(c.fid)); tally.set(c.name, (tally.get(c.name) ?? 0) + 1); }
+    if (sid === mySid) { showCatch(c.name, c.cm, newFish.delete(c.fid)); }
     else ctx.say(`${c.by}님이 ${c.name} ${c.cm}cm를 잡았어요`);
   }
 
@@ -575,11 +572,6 @@ export function createHunt(ctx: HuntCtx) {
       cross.style.transform = `translate(${innerWidth / 2 + (wob.x * innerWidth) / 2}px,${innerHeight / 2 - (wob.y * innerHeight) / 2}px)`;
       cross.style.opacity = cool > 0 ? "0.35" : "1";
       cross.style.borderColor = cool > 0 ? "#9fb4c0" : "#fff";
-    }
-    panel.style.display = huntable() ? "block" : "none";
-    if (huntable()) {
-      const list = [...tally].map(([n, c]) => `${n} ${c}`).join(" · ");
-      panel.innerHTML = `<b>작살총 사냥</b><br>${ctx.isTouch ? "발사 단추로 쏴요" : "클릭: 작살 발사"}<br>${list ? `잡은 것: ${list}` : "물고기 앞쪽을 겨냥해요"}`;
     }
     const showPrompt = huntable() && !!(nearChest || nearShell) && !ctx.blocked();
     prompt.textContent = nearChest ? PROMPT_CHEST : PROMPT_SHELL;
