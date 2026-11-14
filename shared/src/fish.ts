@@ -1,4 +1,5 @@
 import type { FishSpecies, MapId, Rarity, Reach, TimeOfDay } from "./types";
+import { UW_FISH } from "./harpoon";
 
 // 한 줄 형식: "이름:등급:체형:시간대:위치[:나오는 맵(여럿이면 +)]" — 마지막 칸을 쓰면 그 목록의 기본 맵 대신 그 맵에서만 나온다
 // 등급 c=일반 r=희귀 v=매우 희귀 l=전설 / 시간대 d=낮 n=밤 a=상관없음 / 위치 n=가까이 f=멀리 a=상관없음
@@ -247,9 +248,9 @@ const CRUISE = build("cruise", ["cruise"], `
 
 export const SPECIES: FishSpecies[] = [...COMMON, ...LAKE, ...PIER, ...ICE, ...CRUISE];
 
-const BY_ID = new Map(SPECIES.map((s) => [s.id, s]));
+const BY_ID = new Map([...SPECIES, ...UW_FISH].map((s) => [s.id, s])); // 수중 탐험에서 잡은 물고기도 인벤토리·판매에서 찾을 수 있게 한다
 export function speciesById(id: string): FishSpecies | undefined {
-  return BY_ID.get(id);
+  return BY_ID.get(id) ?? (id.startsWith("uw-") ? UW_FISH.find((s) => s.id === id) : undefined);
 }
 
 /** 맵 도감 대상: 공통 물고기와 그 맵의 고유 물고기 */

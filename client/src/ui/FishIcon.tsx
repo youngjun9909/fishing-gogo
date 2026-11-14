@@ -15,14 +15,37 @@ const hex = (c: { getHexString(): string }) => `#${c.getHexString()}`;
 
 /** 도감과 인벤토리에 쓰는 2D 물고기 그림 (종마다 색과 무늬가 다르다) */
 export function FishIcon({ sp, size = 96, silhouette = false }: { sp: FishSpecies; size?: number; silhouette?: boolean }) {
-  const special = sp.rarity === "legendary";
+  const special = sp.rarity === "legendary" || (!!sp.look && !silhouette); // 수중 탐험 물고기는 특색 부품이 보이도록 3D 모델을 찍은 그림을 쓴다(못 잡은 것은 그림자라 2D)
   const [img, setImg] = useState<string | null>(() => (special ? cachedFishIcon(sp.id) : null));
+  useEffect(() => { setImg(special ? cachedFishIcon(sp.id) : null); }, [sp.id]); // 같은 자리에서 다른 물고기로 바뀌면 앞 그림을 지운다
   useEffect(() => {
     if (!special || img) return;
     let alive = true;
     void fishIconUrl(sp).then((u) => alive && u && setImg(u));
     return () => { alive = false; };
   }, [sp.id, special, img]);
+  if (sp.body === "shell") { // 수중 탐험에서 줍는 조개(물고기 모양이 아니다)
+    const c = sp.name === "소라" ? ["#ffd6a0", "#e8a35c"] : sp.name === "진주조개" ? ["#e3defc", "#a99be0"] : ["#ffb8cb", "#e98aa5"];
+    const k = silhouette ? ["#8a93a8", "#7a839a"] : c;
+    return (
+      <svg width={size} height={size} viewBox="0 0 100 100">
+        {sp.name === "소라" ? (
+          <>
+            <path d="M22 62 C20 36 44 20 66 30 C84 38 86 62 66 74 C50 82 28 80 22 62Z" fill={k[0]} stroke={k[1]} strokeWidth="3" />
+            <path d="M34 60 C36 44 52 38 62 46 C70 54 62 66 50 66" fill="none" stroke={k[1]} strokeWidth="3" strokeLinecap="round" />
+            <circle cx="52" cy="56" r="4" fill={k[1]} />
+          </>
+        ) : (
+          <>
+            <path d="M50 18 C80 18 92 48 86 70 C70 84 30 84 14 70 C8 48 20 18 50 18Z" fill={k[0]} stroke={k[1]} strokeWidth="3" />
+            {[-34, -17, 0, 17, 34].map((x) => <path key={x} d={`M50 78 L${50 + x * 1.5} 26`} stroke={k[1]} strokeWidth="2.5" strokeLinecap="round" />)}
+            <rect x="38" y="76" width="24" height="10" rx="4" fill={k[1]} />
+            {sp.name === "진주조개" && !silhouette && <circle cx="50" cy="52" r="9" fill="#fff" stroke="#cfc8f2" strokeWidth="2" />}
+          </>
+        )}
+      </svg>
+    );
+  }
   const { base, belly, accent } = speciesColors(sp);
   const b = silhouette ? "#8a93a8" : hex(base);
   const bl = silhouette ? "#9aa3b8" : hex(belly);

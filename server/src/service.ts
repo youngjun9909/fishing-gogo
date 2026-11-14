@@ -1,5 +1,5 @@
 import {
-  CODEX_REWARDS, EMOTES, SPECIES, ITEMS, MAX_CUSTOM_MAPS, MAX_BAIT, MAX_ROD, MAX_STONE_BUY, RODS, STONE_PRICE, STONES_PER_FISH, baitById, rodLevelOf, SECRET_EMOTES, codexRatio, itemById, sellPrice,
+  CODEX_REWARDS, EMOTES, HARPOONS, MAX_HARPOON, harpoonLevelOf, SPECIES, ITEMS, MAX_CUSTOM_MAPS, MAX_BAIT, MAX_ROD, MAX_STONE_BUY, RODS, STONE_PRICE, STONES_PER_FISH, baitById, rodLevelOf, SECRET_EMOTES, codexRatio, itemById, sellPrice,
   speciesById,
 } from "@fishing/shared";
 import type { Appearance, CatchRecord, MapId, PlayerProfile } from "@fishing/shared";
@@ -76,14 +76,19 @@ export class GameService {
     return this.store.getCodex(playerId);
   }
 
-  async sell(playerId: string, ids: string[]): Promise<{ earned: number; stones: number; coins: number; totalStones: number; sold: number }> {
+  /** only: 이 조건에 맞는 종류만 판다(수중 탐험 안에서는 수중 물고기만). mul: 판매가 배율(수중 채널 인원에 따라) */
+  async sell(playerId: string, ids: string[], only?: (speciesId: string) => boolean, mul = 1): Promise<{ earned: number; stones: number; coins: number; totalStones: number; sold: number }> {
     const p = await this.mustProfile(playerId);
+    if (only) {
+      const mine = new Set((await this.store.listCatches(playerId)).filter((c) => only(c.speciesId)).map((c) => c.id));
+      ids = ids.filter((id) => mine.has(id));
+    }
     const removed = await this.store.removeCatches(playerId, ids);
     let earned = 0, stones = 0;
     for (const c of removed) {
       const sp = speciesById(c.speciesId);
       if (!sp) continue;
-      earned += sellPrice(sp, c.size, rodLevelOf(p.equipped));
+      earned += Math.round(sellPrice(sp, c.size, rodLevelOf(p.equipped)) * mul);
       stones += STONES_PER_FISH[sp.rarity]; // 팔 때마다 등급별로 강화석을 준다
     }
     p.coins += earned;
@@ -126,6 +131,33 @@ export class GameService {
     return { profile: p, success, spent: { stones: next.cost, coins: next.coins } };
   }
 
+  /** 상자 같은 보상을 프로필에 넣는다(미끼는 가진 최대 개수까지) */
+  async grantReward(playerId: string, r: { coins: number; stones: number; baitId: string; bait: number; title?: string }): Promise<void> {
+    const p = await this.mustProfile(playerId);
+    if (r.title && !p.titles.includes(r.title)) p.titles.push(r.title);
+    p.coins += r.coins;
+    p.stones = (p.stones ?? 0) + r.stones;
+    if (r.baitId && baitById(r.baitId)) { p.baits ??= {}; p.baits[r.baitId] = Math.min(MAX_BAIT, (p.baits[r.baitId] ?? 0) + r.bait); }
+    await this.store.saveProfile(p);
+  }
+
+  /** 작살총 강화 1회: 낚싯대와 같은 방식(강화석과 코인을 쓰고 확률로 한 단계 오른다) */
+  async upgradeHarpoon(playerId: string): Promise<{ profile: PlayerProfile; success: boolean; spent: { stones: number; coins: number } }> {
+    const p = await this.mustProfile(playerId);
+    const level = harpoonLevelOf(p.equipped);
+    if (level >= MAX_HARPOON) throw new Error("이미 가장 좋은 작살총이에요");
+    const next = HARPOONS[level + 1];
+    p.stones ??= 0;
+    if (p.stones < next.cost) throw new Error("강화석이 부족해요");
+    if (p.coins < next.coins) throw new Error("돈이 부족해요");
+    p.stones -= next.cost;
+    p.coins -= next.coins;
+    const success = this.rng() < next.rate;
+    if (success) p.equipped.harpoon = String(next.level);
+    await this.store.saveProfile(p);
+    return { profile: p, success, spent: { stones: next.cost, coins: next.coins } };
+  }
+
   /** 대장장이에게서 강화석을 코인으로 산다(한 개 STONE_PRICE) */
   async buyStones(playerId: string, count: number): Promise<PlayerProfile> {
     if (!Number.isInteger(count) || count < 1 || count > MAX_STONE_BUY) throw new Error("살 수 없는 개수예요");
@@ -164,7 +196,7 @@ export class GameService {
   }
 
   async equip(playerId: string, slot: string, itemId: string | null): Promise<PlayerProfile> {
-    if (slot === "rod") throw new Error("낚싯대는 강화로만 바꿀 수 있어요");
+    if (slot === "rod" || slot === "harpoon") throw new Error("낚싯대와 작살총은 강화로만 바꿀 수 있어요");
     const p = await this.mustProfile(playerId);
     if (itemId === null) {
       delete p.equipped[slot];

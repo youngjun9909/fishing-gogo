@@ -4,6 +4,9 @@ export type TimeOfDay = "day" | "night";
 /** 던진 거리: near는 발밑 가까운 물, far는 멀리 던진 깊은 물 */
 export type Reach = "near" | "far";
 
+/** 직접 정한 생김새(수중 탐험 물고기). 있으면 이름으로 찾는 디자인 대신 이것을 쓴다 */
+export interface FishLook { base: string; accent: string; belly?: string; pattern?: string; body?: string; features?: string[]; glow?: boolean; scale?: number }
+
 export interface FishSpecies {
   id: string;
   name: string;
@@ -15,6 +18,7 @@ export interface FishSpecies {
   body: string;
   /** 종마다 다른 특징 파츠와 무늬 */
   features: string[];
+  look?: FishLook;
   /** 비어 있으면 모든 맵에서 나오는 공통 물고기 */
   maps: MapId[];
   time: TimeOfDay | "any";

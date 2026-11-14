@@ -1,11 +1,15 @@
 import * as THREE from "three";
 import { CUSTOM_MODELS } from "./legendModels";
+import { addUwParts, buildUwBody } from "./uwParts";
+import { UW_LEGENDS_A } from "./uwLegends";
+import { UW_LEGENDS_B } from "./uwLegends2";
+import type { Anchor, BodyOut } from "./uwParts";
 import type { FishSpecies } from "@fishing/shared";
 
 // 둥글둥글하고 윤기 나는 장난감 같은 물고기. 뾰족한 모서리 없이 부드러운 모양으로 만든다.
 // 종마다 실제 물고기의 특징(색, 무늬, 수염, 부리 등)을 살린다.
 
-export type Pattern = "plain" | "stripes" | "bands" | "sidestripe" | "spots" | "freckles" | "mottled" | "patches" | "mackerel" | "parr";
+export type Pattern = "rainbow" | "plain" | "stripes" | "bands" | "sidestripe" | "spots" | "freckles" | "mottled" | "patches" | "mackerel" | "parr";
 
 interface Design {
   base: string;
@@ -184,6 +188,7 @@ function hash(s: string) {
 }
 
 function designOf(sp: FishSpecies): Design {
+  if (sp.look) return sp.look as Design; // 수중 탐험 물고기: 직접 정한 생김새
   const known = DESIGN[sp.name];
   if (known) return known;
   const [base, accent] = PALETTE[hash(sp.id) % PALETTE.length];
@@ -210,8 +215,11 @@ export function speciesColors(sp: FishSpecies) {
 }
 
 /** 등은 약간 어둡고 배는 밝은 부드러운 색 + 종마다 다른 큼직한 무늬 */
+const texCache = new Map<string, THREE.CanvasTexture>();
 function paintTexture(sp: FishSpecies, d: Design) {
-  const W = 1024, H = 512, HALF = W / 2;
+  const hit = sp.look && texCache.get(sp.id); // 수중 물고기는 같은 종이 떼로 나오므로 무늬 그림을 한 번만 그려 함께 쓴다
+  if (hit) return hit;
+  const W = sp.look && sp.rarity === "common" ? 512 : 1024, H = W / 2, HALF = W / 2;
   const { base, belly, accent } = speciesColors(sp);
   const hex = (c: THREE.Color) => `#${c.getHexString()}`;
   const c = document.createElement("canvas");
@@ -227,6 +235,13 @@ function paintTexture(sp: FishSpecies, d: Design) {
   g.fillStyle = grad;
   g.fillRect(0, 0, W, H);
 
+  if (d.pattern === "rainbow") { // 일곱 색이 몸을 따라 번진다
+    for (const x0 of [0, HALF]) {
+      const rg = g.createLinearGradient(x0, 0, x0 + HALF, 0);
+      ["#ff5a7a", "#ffa040", "#ffe04a", "#5ae07a", "#4ac8ff", "#7a7aff", "#c87aff"].forEach((c2, i) => rg.addColorStop(x0 ? 1 - i / 6 : i / 6, c2));
+      g.globalAlpha = 0.8; g.fillStyle = rg; g.fillRect(x0, 0, HALF, H * 0.82); g.globalAlpha = 1;
+    }
+  }
   const seed = hash(sp.id);
   const rnd = (i: number) => (((Math.sin(seed * 0.001 + i * 12.9898) * 43758.5453) % 1) + 1) % 1;
   const pattern = d.pattern ?? "plain";
@@ -339,6 +354,7 @@ function paintTexture(sp: FishSpecies, d: Design) {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
+  if (sp.look) texCache.set(sp.id, tex);
   return tex;
 }
 
@@ -605,6 +621,7 @@ export function veil(len: number, wid: number, color: THREE.Color, opacity: numb
   const base = Float32Array.from(geo.attributes.position.array as Float32Array);
   const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
   const m = new THREE.Mesh(geo, mat);
+  m.userData.live = true;
   const pos = geo.attributes.position as THREE.BufferAttribute;
   anim.push((t) => {
     for (let i = 0; i < pos.count; i++) {
@@ -974,8 +991,8 @@ export function makeEye(r: number, side: number, tint: THREE.Color, glowEye = fa
 }
 
 export function buildFish(sp: FishSpecies): THREE.Group {
-  HQ = sp.rarity === "legendary" || sp.rarity === "mythic"; // 전설·신화에만 고품질 표현을 쓴다
-  const custom = CUSTOM_MODELS[sp.name];
+  HQ = sp.rarity === "legendary" || sp.rarity === "mythic" || (!!sp.look && sp.rarity === "veryRare"); // 전설·신화(수중은 매우 희귀부터)에만 고품질 표현을 쓴다
+  const custom = CUSTOM_MODELS[sp.name] ?? (sp.look ? UW_LEGENDS_A[sp.name] ?? UW_LEGENDS_B[sp.name] : undefined); // 수중의 전설·신화는 종마다 전용 모델
   if (custom) return custom(sp);
   const g = new THREE.Group();
   const d = designOf(sp);
@@ -983,17 +1000,19 @@ export function buildFish(sp: FishSpecies): THREE.Group {
   const def = BODIES[bodyKind] ?? BODIES.round;
   const { base, accent } = speciesColors(sp);
   const none = new THREE.Color(0);
-  const glow = !!d.glow || sp.rarity === "legendary";
+  const fancy = sp.rarity === "legendary" || (sp.rarity === "mythic" && !!sp.look); // 수중의 신화도 전설처럼 후광과 빛 알갱이를 두른다
+  const glow = !!d.glow || fancy;
   const tex = paintTexture(sp, d);
   const skin = new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.18, emissive: glow ? accent : none, emissiveIntensity: glow ? 0.16 : 0 });
-  if (sp.rarity === "legendary" && !["octopus", "squid", "ribbon", "ray"].includes(bodyKind)) { skin.bumpMap = scaleMap(); skin.bumpScale = 0.22; } // 비늘 요철
+  if (sp.look && !glow) { skin.emissiveMap = tex; skin.emissive = new THREE.Color("#ffffff"); skin.emissiveIntensity = 0.2; } // 물속(특히 어두운 구역)에서도 제 색과 무늬가 보이게 스스로 조금 빛난다
+  if (fancy && !["octopus", "squid", "ribbon", "ray", "jelly"].includes(bodyKind)) { skin.bumpMap = scaleMap(); skin.bumpScale = 0.22; } // 비늘 요철
   const finColor = base.clone().lerp(accent, bodyKind === "squid" || bodyKind === "octopus" ? 0.1 : 0.45);
   const finMat = new THREE.MeshPhysicalMaterial({ color: finColor, roughness: 0.35, clearcoat: 0.7, clearcoatRoughness: 0.25, side: THREE.DoubleSide, emissive: glow ? accent : none, emissiveIntensity: glow ? 0.2 : 0 });
-  const legend = sp.rarity === "legendary";
+  const legend = fancy;
   const k = d.scale ?? LEGEND_SCALE[sp.name] ?? 1;
   let [sx, sy, sz] = def.scale;
   // 이름으로 직접 디자인한 종은 그 특징만 쓴다(무작위로 배정된 뿔·혹이 숭어 등에 붙지 않게)
-  const designed = !!DESIGN[sp.name];
+  const designed = !!DESIGN[sp.name] || !!sp.look;
   const has = (f: string) => d.features?.includes(f) || (!designed && sp.features.includes(f)) || LEGEND_FEATS[sp.name]?.includes(f);
   const feat = new THREE.Group();
   const realShark = bodyKind === "shark" && sp.name.includes("상어") && !sp.name.includes("철갑");
@@ -1002,12 +1021,13 @@ export function buildFish(sp: FishSpecies): THREE.Group {
   let bendUsed: Bend = noBend;
   let ribbonInfo: RibbonInfo | null = null;
   let headPos = new THREE.Vector3(0, 0, 0);
+  let dims: BodyOut | null = null; // 물고기 모양이 아닌 체형의 치수(특색 부품을 붙일 자리 계산에 쓴다)
   // 용 계열은 몸이 훨씬 길고 가늘어 굽이치는 모습이 된다
   if (has("dragon")) { sx *= 2.0; sy *= 0.72; sz *= 0.78; }
   if (has("curvy")) { sx *= 1.2; sy *= 0.8; sz *= 0.8; }
 
   const bead = (r: number, x: number, y: number, z: number) => {
-    if (legend) {
+    if (legend || (sp.look && sp.rarity !== "common")) { // 수중의 희귀 이상은 홍채가 있는 또렷한 눈
       const eye = makeEye(r, Math.sign(z || 1), accent, true);
       eye.position.set(x, y, z);
       g.add(eye);
@@ -1021,7 +1041,11 @@ export function buildFish(sp: FishSpecies): THREE.Group {
     g.add(eye);
   };
 
-  if (bodyKind === "octopus") {
+  if ((dims = buildUwBody(bodyKind, { g, skin, finMat, base, accent, anim, bead }))) {
+    // 거북·해파리·해마는 uwParts.ts 에서 만든다
+  } else if (bodyKind === "octopus") {
+    dims = { cx: -0.05, cy: 0.25, hx: sx * 0.52, hy: sy * 0.6, hz: sz * 0.52 };
+    dims.head = { p: new THREE.Vector3(-0.05, 0.25 + sy * 0.58, 0), ang: 0 };
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 24), skin);
     head.scale.set(sx * 1.05, sy * 1.2, sz * 1.05);
     head.position.set(-0.05, 0.25, 0);
@@ -1070,6 +1094,7 @@ export function buildFish(sp: FishSpecies): THREE.Group {
     }
   } else if (bodyKind === "squid") {
     // 오징어: 뒤로 뾰족하게 빠지는 원뿔 몸통(외투막)과 뒤쪽 마름모 지느러미
+    dims = { cx: -0.18, cy: 0, hx: sx * 0.75, hy: sy * 0.52, hz: sz * 0.52 };
     const mantle = new THREE.Mesh(profileBody(sx * 1.5, sy * 1.05, sz * 1.05, 0.62, false, 0.75), skin);
     mantle.scale.x = 1;
     mantle.position.x = -0.18;
@@ -1087,6 +1112,7 @@ export function buildFish(sp: FishSpecies): THREE.Group {
       g.add(tube(pts, 0.085, skin, 0.7));
     }
   } else if (bodyKind === "ray") {
+    dims = { cx: 0, cy: 0, hx: 0.475, hy: 0.07, hz: 0.6 };
     const disc = new THREE.Mesh(new THREE.SphereGeometry(0.5, 40, 24), skin);
     disc.scale.set(0.95, 0.14, 1.2);
     g.add(disc);
@@ -1446,6 +1472,30 @@ export function buildFish(sp: FishSpecies): THREE.Group {
   }
 
   g.add(feat);
+
+  if (sp.look?.features?.length) { // 수중 물고기의 특색 부품: 몸 위의 자리(등·옆구리·머리·주둥이·꼬리)를 구해 붙인다
+    const rb = ribbonInfo as RibbonInfo | null;
+    const dm = dims ?? { cx: 0, cy: 0, hx: sx / 2, hy: sy / 2, hz: sz / 2 };
+    const prof = (u: number) => Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(2 * u - 1), 2.2)));
+    const back = dm.back ?? ((u: number): Anchor => {
+      if (rb) { const P = rb.point(u), up = rb.up(u), tg = rb.tangent(u), h = rb.height(u) * 0.9; return { p: new THREE.Vector3(P.x + up.x * h, P.y + up.y * h, 0), ang: Math.atan2(tg.y, tg.x) }; }
+      const x = dm.cx + (2 * u - 1) * dm.hx * 0.94;
+      return { p: bendUsed.map(x, dm.cy + dm.hy * prof(u) * 0.93, 0), ang: bendUsed.ang(x) };
+    });
+    const side = (u: number, s: number, v = 0) => {
+      if (rb) { const P = rb.point(u); return new THREE.Vector3(P.x, P.y + v, s * rb.width(u) * 0.9); }
+      if (dm.back) { const a = dm.back(u); return new THREE.Vector3(a.p.x + dm.hy * 0.5, a.p.y + v, s * dm.hz * 0.8); }
+      return bendUsed.map(dm.cx + (2 * u - 1) * dm.hx * 0.94, dm.cy + v, s * dm.hz * prof(u) * 0.95);
+    };
+    const H = Math.max(0.2, rb ? rb.height(0.6) * 2 : dm.hy * 2);
+    addUwParts({
+      g, feats: sp.look.features, anim, skin, finMat, base, accent, back, side,
+      head: dm.head ?? back(rb ? 0.93 : 0.8),
+      nose: dm.nose ?? (rb ? rb.point(0.99).clone() : headPos.lengthSq() > 0 ? headPos.clone() : new THREE.Vector3(dm.cx + dm.hx, dm.cy, 0)),
+      tail: dm.tail ?? (rb ? rb.point(0.02).clone() : bendUsed.map(dm.cx - dm.hx * 0.95, dm.cy, 0)),
+      H: Math.max(H, 0.3), S: Math.max(H, 0.3) * 1.35, W: Math.max(0.1, rb ? rb.width(0.6) * 2 : dm.hz * 2), L: rb ? rb.length : dm.hx * 2,
+    });
+  }
 
   if (legend) legendaryFlair({ bend: bendUsed, hp: headPos, ribbon: ribbonInfo, g, sp, bodyKind, sx, sy, sz, base, accent, finMat, anim });
   if (glow && !legend) {

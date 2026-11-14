@@ -1,16 +1,19 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { SPECIES } from "@fishing/shared";
+import { HARPOON, SPECIES, harpoonLevelOf } from "@fishing/shared";
 import type { FishSpecies, PlayerProfile } from "@fishing/shared";
 import { api, auth, colyseus } from "./net";
 import type { Room } from "colyseus.js";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { FishIcon } from "./ui/FishIcon";
+import { UwInventory } from "./ui/UwInventory";
+import "./styles.css"; // 낚시 방과 같은 인벤토리·강화 화면을 쓰므로 같은 스타일을 불러온다
 import { createEngine } from "./three/engine";
 import { bodyBox, buildFish } from "./three/fishModel";
 import { CharacterRig, SKIN, loadCharacterModel } from "./three/character";
+import { createHunt } from "./uwHunt";
 
 // 수중 탐험 시제품: 해저 지형 소품은 폴리포크(공식 CDN에서 실행 중에만 불러옴, 저장소에 파일 없음),
 // 물고기·신화·캐릭터는 우리 모델. 조작: WASD 헤엄(보는 쪽으로 오르내림), Shift 빠르게, 드래그 시점, 1~5 구역 이동, P 파스텔 비교
@@ -129,7 +132,8 @@ const DEBUG = params.has("debug"); // 확인용 키(구역 바로 가기 등)는
 const readSaved = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const writeSaved = (key: string, v: string) => { try { localStorage.setItem(key, v); } catch { /* 저장소를 못 쓰면 이번만 */ } };
 /** 휴대폰·태블릿처럼 손가락으로 조작하는 기기 (본 게임 RoomScreen 과 같은 판별) */
-const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+// 터치 화면이 달린 노트북·모니터에서도 마우스가 주 입력이면 PC 조작으로 한다: 주 입력 장치가 손가락(거칠고 호버 없음)일 때만 휴대폰 조작. 확인용: 주소에 &touch=1 / &touch=0 으로 강제
+const isTouch = params.has("touch") ? params.get("touch") === "1" : matchMedia("(hover: none) and (pointer: coarse)").matches;
 let quality = Math.min(2, Math.max(0, Number(params.get("q") ?? readSaved("uw.quality") ?? (isTouch ? 1 : 0)))); // 휴대폰은 보통 화질에서 시작한다(느리면 자동으로 더 내린다)
 function applyQuality() {
   const q = QUALITY[quality];
@@ -523,85 +527,7 @@ function buildFlag() {
   flagCloth.push(cloth);
 }
 
-// 발광 해파리: 심해 협곡을 느리게 떠다닌다 (14마리, 우리 쪽 코드로 만든 모델)
-interface Jelly { g: THREE.Group; dome: THREE.Mesh; base: THREE.Vector3; ph: number }
-const jellies: Jelly[] = [];
-// 거북이 모래 만의 바다거북: 구역 둘레를 천천히 돌며 앞지느러미를 젓는다 (도감에 거북이가 없어 여기서 만든다)
-const turtles: Array<{ root: THREE.Group; fins: THREE.Mesh[]; a: number; r: number; y: number; sp: number }> = [];
-function buildTurtles() {
-  const std = (c: string) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 1 });
-  const shellM = std("#8c6b46"), skinM = std("#c9b877"), bellyM = std("#e3d39a"), eyeM = std("#1c1c1c");
-  const ball = new THREE.SphereGeometry(1, 8, 5), fin = new THREE.SphereGeometry(1, 6, 4);
-  fin.translate(0, 0, 1); // 뿌리가 원점에 오게 (몸에 붙은 쪽을 축으로 젓는다)
-  const part = (g: THREE.BufferGeometry, m: THREE.Material, sx: number, sy: number, sz: number, x: number, y: number, z: number) => {
-    const o = new THREE.Mesh(g, m);
-    o.scale.set(sx, sy, sz); o.position.set(x, y, z);
-    return o;
-  };
-  for (let k = 0; k < 6; k++) {
-    const root = new THREE.Group(), fins: THREE.Mesh[] = [];
-    root.add(part(ball, shellM, 1, 0.42, 0.8, 0, 0.08, 0), part(ball, bellyM, 0.93, 0.2, 0.72, 0, -0.08, 0), part(ball, skinM, 0.3, 0.24, 0.24, 1.16, 0.04, 0),
-      part(ball, eyeM, 0.05, 0.05, 0.05, 1.32, 0.1, 0.2), part(ball, eyeM, 0.05, 0.05, 0.05, 1.32, 0.1, -0.2));
-    for (const side of [1, -1]) {
-      const f = part(fin, skinM, 0.3, 0.05, 0.62 * side, 0.55, 0, 0.55 * side); // 앞지느러미: 길고 뒤로 젖혀 있다
-      f.rotation.y = 0.55 * side;
-      const b = part(fin, skinM, 0.2, 0.04, 0.3 * side, -0.8, 0, 0.4 * side);
-      b.rotation.y = -0.9 * side;
-      fins.push(f);
-      root.add(f, b);
-    }
-    root.scale.setScalar(1.6 + (k % 3) * 0.6);
-    scene.add(root);
-    turtles.push({ root, fins, a: k * 1.9, r: 12 + k * 8, y: 2.5 + (k * 1.7) % 6, sp: 1.3 + (k % 2) * 0.5 });
-  }
-}
-function updateTurtles(t: number, dt: number) {
-  const q = ZONES[5];
-  for (const u of turtles) {
-    u.a -= (u.sp / u.r) * dt;
-    u.root.position.set(q.x + Math.cos(u.a) * u.r, q.d + u.y + Math.sin(t * 0.4 + u.r) * 0.6, q.z + Math.sin(u.a) * u.r);
-    u.root.rotation.y = Math.PI / 2 - u.a;
-    u.fins[0].rotation.x = Math.sin(t * 1.6 + u.r) * 0.5;
-    u.fins[1].rotation.x = -u.fins[0].rotation.x;
-  }
-}
-
-function buildJellies() {
-  const z = ZONES[4];
-  const domeGeo = new THREE.SphereGeometry(1, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2);
-  const tentParts: THREE.BufferGeometry[] = [];
-  for (let i = 0; i < 9; i++) {
-    const a = (i / 9) * Math.PI * 2;
-    const t2 = new THREE.CylinderGeometry(0.025, 0.012, 2.6, 4);
-    t2.translate(Math.cos(a) * 0.62, -1.3, Math.sin(a) * 0.62);
-    tentParts.push(t2);
-  }
-  const tentGeo = mergeGeometries(tentParts)!;
-  for (let i = 0; i < 14; i++) {
-    const col = ["#6fb4ff", "#8a9bff", "#5fd0ff"][i % 3];
-    const g = new THREE.Group();
-    const dome = new THREE.Mesh(domeGeo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    const tent = new THREE.Mesh(tentGeo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }));
-    g.add(dome, tent);
-    const sc = 1.4 + rnd() * 2.2;
-    g.scale.setScalar(sc);
-    const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * 70;
-    const x = z.x + Math.cos(a) * rr, zz = z.z + Math.sin(a) * rr;
-    const base = new THREE.Vector3(x, heightAt(x, zz) + 8 + rnd() * 26, zz);
-    g.position.copy(base);
-    scene.add(g);
-    jellies.push({ g, dome, base, ph: rnd() * 6 });
-  }
-}
 function updateExtras(t: number) {
-  for (const j of jellies) {
-    const near = Math.hypot(j.base.x - player.pos.x, j.base.z - player.pos.z) < 150;
-    j.g.visible = near;
-    if (!near) continue;
-    j.g.position.set(j.base.x + Math.cos(t * 0.15 + j.ph) * 5, j.base.y + Math.sin(t * 0.4 + j.ph) * 3, j.base.z + Math.sin(t * 0.13 + j.ph) * 5);
-    const pulse = Math.sin(t * 2 + j.ph);
-    j.dome.scale.set(1 + pulse * 0.1, 1 - pulse * 0.12, 1 + pulse * 0.1);
-  }
   for (const cl of flagCloth) {
     const base = cl.userData.base as Float32Array, arr = cl.geometry.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < arr.count; i++) { const x = base[i * 3]; arr.setZ(i, Math.sin(x * 1.3 - t * 3) * 0.35 * ((x + 3.2) / 6.4)); }
@@ -719,7 +645,7 @@ function flatten(fish: THREE.Object3D) {
   const byAnchor = new Map<THREE.Object3D, THREE.Mesh[]>();
   for (const o of nodes) {
     const m = o as THREE.Mesh;
-    if (!m.isMesh || (m as any).isSkinnedMesh || Array.isArray(m.material) || moving.has(m) || m.children.length || !m.visible) continue;
+    if (!m.isMesh || (m as any).isSkinnedMesh || Array.isArray(m.material) || moving.has(m) || m.children.length || !m.visible || m.userData.live) continue; // live: 꼭짓점이 매 프레임 움직이는 부품(날개·돛·천)은 합치지 않는다
     let anchor = m.parent!;
     while (anchor !== fish && !moving.has(anchor)) anchor = anchor.parent!;
     (byAnchor.get(anchor) ?? byAnchor.set(anchor, []).get(anchor)!).push(m);
@@ -1068,6 +994,11 @@ let fpPhase = 0;
 function updateFpArms(dt: number) {
   fpArms.visible = firstPerson && ridePhase === "none" && !loading;
   if (!fpArms.visible) return;
+  if (hunt.aimPose()) { // 작살총을 두 손으로 잡은 모습: 오른손은 손잡이, 왼손은 앞쪽을 받친다
+    fpArm[1].position.set(0.23, -0.35, -1.05); fpArm[1].rotation.set(1.0, 0.2, 0);
+    fpArm[0].position.set(0.17, -0.31, -1.3); fpArm[0].rotation.set(1.0, -0.4, 0);
+    return;
+  }
   fpPhase += dt * (1.1 + swimK * 2.4);
   const p = (fpPhase / (Math.PI * 2)) % 1;
   const reach = p < 0.35 ? 1 : p < 0.7 ? 1 - (p - 0.35) / 0.35 : (p - 0.7) / 0.3; // 1 앞으로 뻗음 ~ 0 가슴 앞으로 당김
@@ -1099,6 +1030,12 @@ window.addEventListener("keydown", (e) => {
   const dg = /^Digit([1-4])$/.exec(e.code); // Shift 를 누른 채여도 숫자 키로 알아본다
   if (dg && !e.repeat) callMount(Number(dg[1]) - 1);
   if (DEBUG && (k === "[" || k === "]")) { teleZone = (teleZone + (k === "]" ? 1 : ZONES.length - 1)) % ZONES.length; teleport(teleZone); } // 확인용: 구역 바로 가기
+  if (k === "i") { toggleInv(); return; }
+  if (k === "g") { toggleGuide(); return; }
+  if (k === "escape" && guideOpen) { toggleGuide(false); return; }
+  if (guideOpen) return;
+  if (k === "escape" && invOpen) { toggleInv(); return; }
+  if (invOpen) return; // 가방이 열려 있는 동안은 게임 키를 받지 않는다
   if (k === "h") showHelp(helpEl.style.display === "none");
   if (k === "m") setMap(mapEl.style.display === "none"); // 미니맵 여닫기
 });
@@ -1153,24 +1090,26 @@ function teleport(i: number) {
 // 기력(스태미너): 화면 아래 가운데 막대. 가득 차 있으면 숨긴다
 let stamina = 1, staRest = 0, tired = false;
 const staEl = document.createElement("div");
-staEl.style.cssText = "position:fixed;left:50%;bottom:112px;transform:translateX(-50%);width:190px;height:10px;border-radius:6px;background:rgba(10,40,60,.5);border:2px solid rgba(255,255,255,.7);overflow:hidden;pointer-events:none;opacity:0;transition:opacity .4s";
+staEl.style.cssText = "position:fixed;left:50%;bottom:112px;transform:translateX(-50%);width:190px;height:18px;box-sizing:border-box;border-radius:999px;background:rgba(255,255,255,.9);padding:3px;box-shadow:0 3px 0 rgba(74,59,82,.14);pointer-events:none;opacity:0;transition:opacity .4s";
+const STA_FILL = "linear-gradient(90deg,var(--mint),var(--sun),var(--pink-deep))";
 const staFill = document.createElement("div");
-staFill.style.cssText = "height:100%;width:100%;background:#7be0c3;border-radius:4px";
+staFill.style.cssText = `height:100%;width:100%;background:${STA_FILL};border-radius:999px`;
 staEl.append(staFill);
 if (isTouch) { staEl.style.bottom = "auto"; staEl.style.top = "50px"; staEl.style.width = "130px"; }
 document.body.append(staEl);
 const WALL_STOP = 0.12; // 능선 발치(바위 더미 앞)에서 멈춘다
 let surfT = 0, exitOpen = false;
 const exitEl = document.createElement("div");
-exitEl.style.cssText = "position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,30,50,.45);z-index:20;font-family:sans-serif";
-exitEl.innerHTML = `<div style="background:#fff;border-radius:18px;padding:26px 30px;text-align:center;box-shadow:0 10px 40px rgba(0,40,70,.4)"><div style="font:bold 20px sans-serif;color:#17405c;margin-bottom:6px">물 밖으로 나가시겠습니까?</div><div style="font-size:14px;color:#55707f;margin-bottom:18px">나가면 대기실로 돌아갑니다.</div><button id="exitYes" style="font:bold 16px sans-serif;padding:10px 22px;margin:0 6px;border:0;border-radius:12px;background:#2f9be0;color:#fff;cursor:pointer">나가기</button><button id="exitNo" style="font:bold 16px sans-serif;padding:10px 22px;margin:0 6px;border:0;border-radius:12px;background:#e3edf2;color:#17405c;cursor:pointer">계속 탐험</button></div>`;
+exitEl.className = "modal-back";
+exitEl.style.display = "none";
+exitEl.innerHTML = `<div class="panel modal narrow" style="width:min(400px,100%);text-align:center"><h2>물 밖으로 나가시겠습니까?</h2><p class="hint" style="font-size:16px;margin:8px 0 18px">나가면 대기실로 돌아갑니다.</p><div style="display:flex;gap:10px;justify-content:center"><button id="exitYes" class="btn pink">나가기</button><button id="exitNo" class="btn ghost">계속 탐험</button></div></div>`;
 document.body.append(exitEl);
 function askExit() {
   exitOpen = true; surfT = 0;
   keys.clear();
   document.exitPointerLock?.();
   freeLook = false; canvas.style.cursor = "";
-  exitEl.style.display = "flex";
+  exitEl.style.display = "grid";
 }
 exitEl.querySelector("#exitYes")!.addEventListener("click", () => { location.href = "/"; }); // 대기실(본 게임 첫 화면)
 exitEl.querySelector("#exitNo")!.addEventListener("click", () => { exitOpen = false; exitEl.style.display = "none"; surfT = -1.5; player.vel.y = -5; });
@@ -1183,7 +1122,7 @@ function movePlayer(dt: number) {
   const r = new THREE.Vector3(-Math.cos(camYaw), 0, Math.sin(camYaw)); // 오른쪽
   const forced = transitionWish(dt);
   const wish = new THREE.Vector3();
-  if (!forced && !exitOpen && ridePhase !== "summon") {
+  if (!forced && !exitOpen && !invOpen && !guideOpen && ridePhase !== "summon") {
   if (keys.has("w") || keys.has("arrowup")) wish.add(f);
   if (keys.has("s") || keys.has("arrowdown")) wish.sub(f);
   if (keys.has("d") || keys.has("arrowright")) wish.add(r);
@@ -1197,7 +1136,7 @@ function movePlayer(dt: number) {
   else if ((staRest -= dt) <= 0) { stamina = Math.min(1, stamina + dt / 8); if (stamina >= 0.3) tired = false; } // 1초 쉬면 차기 시작, 바닥났으면 30% 찰 때까지 못 달린다
   staEl.style.opacity = stamina < 1 ? "1" : "0";
   staFill.style.width = `${stamina * 100}%`;
-  staFill.style.background = tired ? "#ff9a4d" : "#7be0c3";
+  staFill.style.background = tired ? "var(--danger)" : STA_FILL;
   } else if (forced) wish.copy(forced);
   player.vel.lerp(wish, Math.min(1, dt * (forced ? 6 : wish.lengthSq() > 0 ? 6 : 8))); // 손을 떼면 금방 선다
   const sp = player.vel.length();
@@ -1321,16 +1260,16 @@ function buildGates() {
 const MAP = 230;
 const mapEl = document.createElement("canvas");
 mapEl.width = mapEl.height = MAP * 2;
-mapEl.style.cssText = `position:fixed;right:12px;top:12px;width:${isTouch ? 108 : MAP}px;height:${isTouch ? 108 : MAP}px;border-radius:14px;border:2px solid rgba(255,255,255,.55);background:rgba(8,40,70,.93);pointer-events:none`;
+mapEl.style.cssText = `position:fixed;right:12px;top:12px;width:${isTouch ? 108 : MAP}px;height:${isTouch ? 108 : MAP}px;border-radius:18px;border:3px solid #fff;box-shadow:0 5px 0 rgba(74,59,82,.14);background:rgba(8,40,70,.93);pointer-events:none`;
 document.body.append(mapEl);
-const ICON = (d: string, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const ICON = (d: string, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const mapX = document.createElement("button"), mapOpen = document.createElement("button");
 mapX.innerHTML = ICON('<path d="M6 6l12 12M18 6L6 18"/>', 14);
 mapX.setAttribute("aria-label", "지도 닫기");
-mapX.style.cssText = "position:fixed;right:17px;top:17px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,20,40,.75);display:none;place-items:center;padding:0;z-index:6";
+mapX.style.cssText = "position:fixed;right:17px;top:17px;width:26px;height:26px;border-radius:50%;border:0;background:#fff;color:var(--ink);display:none;place-items:center;padding:0;z-index:6";
 mapOpen.innerHTML = ICON('<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14"/>', 20);
 mapOpen.setAttribute("aria-label", "지도 열기");
-mapOpen.style.cssText = "position:fixed;right:12px;top:12px;width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,.6);background:rgba(10,40,60,.6);display:none;place-items:center;padding:0;z-index:6";
+mapOpen.style.cssText = "position:fixed;right:12px;top:12px;width:38px;height:38px;border-radius:50%;border:0;background:#fff;color:var(--ink);box-shadow:0 3px 0 rgba(74,59,82,.14);display:none;place-items:center;padding:0;z-index:6";
 document.body.append(mapX, mapOpen);
 function setMap(on: boolean) {
   mapEl.style.display = on ? "" : "none";
@@ -1354,7 +1293,7 @@ function drawMap() {
     g.beginPath(); g.moveTo(P(pr.pos.x), P(pr.pos.z)); g.lineTo(P(o.pos.x), P(o.pos.z)); g.stroke();
     g.setLineDash([]);
   }
-  g.textAlign = "center"; g.font = "bold 19px sans-serif";
+  g.textAlign = "center"; g.font = "bold 19px Jua, sans-serif";
   ZONES.forEach((q, i) => {
     g.fillStyle = i === curZone ? "#fff" : q.tint; g.globalAlpha = i === curZone ? 1 : 0.8;
     g.beginPath(); g.arc(P(q.x), P(q.z), i === curZone ? 30 : 25, 0, 7); g.fill();
@@ -1407,7 +1346,7 @@ vignetteEl.style.cssText = "position:fixed;inset:0;pointer-events:none;opacity:0
 const flashEl = document.createElement("div"); // 이동 순간의 섬광
 flashEl.style.cssText = "position:fixed;inset:0;pointer-events:none;opacity:0;background:#dff8ff";
 const titleEl = document.createElement("div"); // 도착 구역 이름 (위쪽에 작게 잠깐)
-titleEl.style.cssText = `position:fixed;left:50%;top:14%;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .5s;padding:8px 22px;border-radius:24px;background:rgba(20,70,110,.6);color:#fff;font:bold ${isTouch ? 15 : 22}px/1.35 sans-serif;text-shadow:0 1px 4px rgba(0,40,70,.6);max-width:88vw;box-sizing:border-box;text-align:center;word-break:keep-all`; // 좁은 화면에서는 줄을 바꿔 잘리지 않게
+titleEl.style.cssText = `position:fixed;left:50%;top:14%;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .5s;padding:8px 22px;border-radius:999px;background:var(--paper);border:3px solid #fff;outline:3px solid rgba(74,59,82,.12);box-shadow:var(--shadow);color:var(--ink);font:${isTouch ? 15 : 20}px/1.35 var(--font);max-width:88vw;box-sizing:border-box;text-align:center;word-break:keep-all`; // 좁은 화면에서는 줄을 바꿔 잘리지 않게
 document.body.append(vignetteEl, flashEl, titleEl);
 let trans: { t0: number; gate: Gate; teleported: boolean } | null = null;
 let gateCooldown = 0;
@@ -1466,7 +1405,7 @@ function transitionWish(dt: number): THREE.Vector3 | null {
 // ---- 화면 위 표시: 탈것 칸(아래 가운데), 조작 안내 카드 --------------------------------------
 // 탈것 칸: 1~4번 칸에 넣어 둔 신화와, 지금 불러서 타고 있는 칸을 보여 준다. 눌러도 불린다
 const slotBar = document.createElement("div");
-slotBar.style.cssText = "position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:8px;padding:8px;border-radius:18px;background:rgba(10,40,60,.55);border:2px solid rgba(255,255,255,.45);z-index:5;font-family:sans-serif";
+slotBar.style.cssText = "position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:8px;padding:8px 10px;border-radius:26px;background:var(--paper);border:3px solid #fff;outline:3px solid rgba(74,59,82,.12);box-shadow:var(--shadow);color:var(--ink);z-index:5";
 document.body.append(slotBar);
 const slotEls: HTMLDivElement[] = [];
 function buildSlotBar() {
@@ -1475,17 +1414,17 @@ function buildSlotBar() {
   slotBar.title = slotNote.trim();
   mountSlots.forEach((sp, i) => {
     const el = document.createElement("div");
-    el.style.cssText = "position:relative;width:66px;height:74px;border-radius:13px;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,box-shadow .2s,background .2s;overflow:hidden";
+    el.style.cssText = "position:relative;width:66px;height:74px;border-radius:16px;background:#fff;border:3px solid #f0eaf5;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,box-shadow .2s,background .2s;overflow:hidden";
     const key = document.createElement("span");
     key.textContent = String(i + 1);
-    key.style.cssText = "position:absolute;left:4px;top:3px;min-width:16px;height:16px;line-height:16px;text-align:center;border-radius:5px;background:rgba(0,20,40,.7);color:#fff;font:bold 11px sans-serif;z-index:1";
+    key.style.cssText = "position:absolute;left:4px;top:3px;min-width:16px;height:16px;line-height:16px;text-align:center;border-radius:5px;background:var(--ink);color:#fff;font:11px var(--font);z-index:1";
     const icon = document.createElement("div");
-    icon.style.cssText = "width:48px;height:48px;display:grid;place-items:center;color:rgba(255,255,255,.35);font-size:24px";
+    icon.style.cssText = "width:48px;height:48px;display:grid;place-items:center;color:#c9c0d1;font-size:24px";
     if (sp) createRoot(icon).render(createElement(FishIcon, { sp, size: 48 }));
     else icon.textContent = "＋";
     const nm = document.createElement("div");
     nm.textContent = sp ? sp.name : "빈 칸";
-    nm.style.cssText = `width:62px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:bold 10px sans-serif;color:${sp ? "#fff" : "rgba(255,255,255,.5)"}`;
+    nm.style.cssText = `width:62px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:11px var(--font);color:${sp ? "var(--ink)" : "var(--ink-soft)"}`;
     el.append(key, icon, nm);
     el.title = sp ? `${i + 1}번 키: ${sp.name}` : "메인 화면의 🐉 탈것에서 넣을 수 있어요";
     el.addEventListener("click", () => callMount(i));
@@ -1496,33 +1435,94 @@ function buildSlotBar() {
 function updateSlotBar() {
   slotEls.forEach((el, i) => {
     const on = ridePhase !== "none" && rideSlot === i; // 지금 불러서 타고 있는 칸
-    el.style.borderColor = on ? "#ffd86b" : "rgba(255,255,255,.35)";
-    el.style.boxShadow = on ? "0 0 14px rgba(255,216,107,.9)" : "none";
-    el.style.background = on ? "rgba(255,216,107,.28)" : "rgba(255,255,255,.14)";
+    el.style.borderColor = on ? "var(--sun-deep)" : "#f0eaf5";
+    el.style.boxShadow = on ? "0 0 0 3px rgba(255,212,90,.5)" : "none";
+    el.style.background = on ? "#fff4c9" : "#fff";
   });
 }
 
 // 조작 안내: 처음 한 번 보여 주고, 닫으면 왼쪽 위의 작은 ? 단추만 남는다(H 로도 여닫는다)
 const helpEl = document.createElement("div");
-helpEl.style.cssText = "position:fixed;left:12px;top:12px;padding:12px 14px 12px;border-radius:16px;background:rgba(10,40,60,.62);border:2px solid rgba(255,255,255,.45);color:#fff;font:13px/1 sans-serif;z-index:6;display:none";
-const keycap = "display:inline-block;min-width:34px;padding:4px 7px;margin-right:9px;border-radius:7px;background:#fff;color:#17405c;font:bold 12px sans-serif;text-align:center;box-shadow:0 2px 0 rgba(0,20,40,.45)";
-helpEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px"><b style="font-size:14px">조작</b><button id="helpClose" style="border:0;background:none;color:#fff;font-size:17px;cursor:pointer;padding:0 0 0 18px;line-height:1">✕</button></div>`
-  + (isTouch ? [["스틱", "보는 쪽으로 헤엄"], ["끌기", "화면을 끌어 시점 돌리기"], ["두 손가락", "벌리고 오므려 거리 조절"], ["달리기", "누르고 있는 동안 빠르게"], ["시점", "1인칭 ↔ 3인칭"]]
-    : [["Shift", "빠르게 헤엄"], ["클릭", "마우스로 시점 돌리기"], ["Esc", "시점 풀기"], ["V", "1인칭 ↔ 3인칭"], ["H", "안내 닫기"]])
+helpEl.style.cssText = "position:fixed;left:12px;top:12px;padding:12px 14px 12px;border-radius:18px;background:var(--paper);border:3px solid #fff;outline:3px solid rgba(74,59,82,.12);box-shadow:var(--shadow);color:var(--ink);font:14px/1 var(--font);z-index:6;display:none";
+const keycap = "display:inline-block;min-width:34px;padding:4px 7px;margin-right:9px;border-radius:8px;background:var(--sun);color:var(--ink);font:13px var(--font);text-align:center;box-shadow:0 2px 0 var(--sun-deep)";
+helpEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px"><b style="font-size:16px;font-weight:normal">조작</b><button id="helpClose" style="border:0;background:none;color:var(--ink-soft);font-size:17px;cursor:pointer;padding:0 0 0 18px;line-height:1">✕</button></div>`
+  + (isTouch ? [["스틱", "보는 쪽으로 헤엄"], ["끌기", "화면을 끌어 시점 돌리기"], ["두 손가락", "벌리고 오므려 거리 조절"], ["달리기", "누르고 있는 동안 빠르게"], ["시점", "1인칭 ↔ 3인칭"], ["발사", "작살 쏘기 · 힘겨루기 땐 꾹 눌러 감기"]]
+    : [["Shift", "빠르게 헤엄"], ["클릭", "마우스로 시점 돌리기"], ["Esc", "시점 풀기"], ["V", "1인칭 ↔ 3인칭"], ["클릭/Space", "작살 쏘기 · 힘겨루기 땐 꾹 눌러 감기"], ["H", "안내 닫기"]])
     .map(([k, d]) => `<div style="display:flex;align-items:center;margin-top:7px"><span style="${keycap}">${k}</span>${d}</div>`).join("");
 const helpBtn = document.createElement("button");
 helpBtn.textContent = "?";
 helpBtn.title = "조작 안내 (H)";
-helpBtn.style.cssText = "position:fixed;left:12px;top:12px;width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.6);background:rgba(10,40,60,.55);color:#fff;font:bold 15px sans-serif;cursor:pointer;z-index:6;display:none";
+helpBtn.style.cssText = "position:fixed;left:12px;top:12px;width:30px;height:30px;border-radius:50%;border:0;background:#fff;color:var(--ink);box-shadow:0 3px 0 rgba(74,59,82,.14);font:16px var(--font);cursor:pointer;z-index:6;display:none";
 if (isTouch) helpEl.style.top = "52px"; // 휴대폰: 위 가운데의 채널 단추와 겹치지 않게 한 줄 아래에 편다
 document.body.append(helpEl, helpBtn);
 function showHelp(on: boolean) {
   helpEl.style.display = on ? "" : "none";
   helpBtn.style.display = on ? "none" : "";
+  guideBtn.style.display = on ? "none" : "";
   if (!on) writeSaved("uw.help", "seen"); // 한 번 닫으면 다음부터는 접힌 채로 시작한다
 }
 helpEl.querySelector("#helpClose")!.addEventListener("click", () => showHelp(false));
 helpBtn.addEventListener("click", () => showHelp(true));
+
+// 안내(G): 조작 창과 별개로, 작살·힘겨루기·줍기·보스 사용법을 탭으로 알려 주는 창. 열려 있는 동안은 조작과 발사를 막는다
+let guideOpen = false;
+const GUIDE: Array<[string, string[]]> = [
+  ["작살 쏘기", [
+    `${isTouch ? "오른쪽 아래 <b>발사</b> 단추" : "<b>마우스 왼쪽 클릭</b>(또는 Space)"}으로 작살을 쏴요. 맞으면 물고기가 줄에 끌려와요.`,
+    "물고기는 계속 움직여요. 가는 방향의 <b>조금 앞쪽</b>을 겨냥하세요.",
+    "십자선이 흔들려요. 가만히 떠 있으면 덜 흔들리고, 작살총을 강화하면 더 안정돼요.",
+    "빠르게 헤엄치거나 바짝 다가가면 물고기가 놀라 도망가요. 천천히 다가가세요.",
+    "쏜 뒤에는 잠깐 재장전이 필요해요(작살총을 강화하면 빨라져요).",
+  ]],
+  ["힘겨루기", [
+    "<b>매우 희귀 · 전설 · 신화</b> 물고기는 작살을 맞힌 뒤 힘겨루기를 해야 잡혀요. 조준은 필요 없고 <b>누르고 떼기</b>만 해요.",
+    `<b>① 지치게 하기 (모두)</b>: 물고기는 <b>쉬는 구간</b>과 <b>돌진 구간</b>을 번갈아 해요. 쉴 때는 ${isTouch ? "발사 단추" : "마우스(또는 Space)"}를 <b>꾹 눌러 감고</b>, 돌진할 때는 <b>손을 떼서 줄을 풀어</b> 주세요. 바깥 <b>노란 고리</b>가 지친 정도예요. 가득 차면 <b>매우 희귀</b>는 바로 잡혀요.`,
+    "돌진 직전에는 화면 가장자리가 <b>노랗게 깜빡</b>이고, 돌진하면 <b>주황으로 번쩍이며 ✋ 놓아요!</b>가 떠요. 이때 계속 감고 있으면 화면이 <b>붉게</b> 변하고 흔들려요.",
+    "<b>안쪽 고리(장력)</b>는 감는 동안 커져요. 하양 → 주황 → <b>빨강</b>이 되고 가득 차면 줄이 끊겨요. 손을 떼면 작아져요. 안 감으면 물고기가 쉬어서 지치지 않아요.",
+    "<b>② 마지막 버티기 (전설 · 신화)</b>: 지치면 <b>⚖ 띠 안에 유지해요!</b>가 떠요. 안쪽 고리를 <b>두 점선 고리 사이</b>(연두색 띠)에 일정 시간 두세요. 누르면 커지고 떼면 작아져요. 물고기가 불규칙하게 밀어서 흔들려요. 띠를 벗어나면 모은 시간이 줄어요.",
+    `<b>③ 박자 (신화)</b>: 마지막으로 <b>♪ 박자에 맞춰 눌러요!</b>가 떠요. 바깥에서 모여드는 노란 링이 안쪽 고리에 닿는 순간에 ${isTouch ? "발사 단추" : "클릭"}를 <b>세 번</b> 눌러요. 틀리면 장력이 오르고 처음부터 다시 해요.`,
+    "등급이 높을수록 돌진이 길고, 띠가 좁고, 박자가 빨라요. 작살총을 강화하면 장력이 천천히 오르고 물고기가 덜 흔들어요.",
+  ]],
+  ["줍기 · 상자", [
+    "바닥의 <b>조개</b>와 <b>보물 상자</b>에 가까이 가면 'E' 안내가 떠요. <b>E 키</b>(휴대폰은 <b>줍기</b> 단추)로 주워요.",
+    "상자는 나무 · 은 · 금 순으로 좋은 게 나오고, 가끔 텅 비어 있기도 해요.",
+    "주운 조개와 잡은 물고기는 <b>I 키(가방)</b>에서 팔 수 있어요. 같은 채널에 사람이 많을수록 값이 조금 높아요.",
+  ]],
+  ["보스 · 강화", [
+    "가끔 어딘가에 <b>구역 보스</b>가 나타나요. 나타나면 채널 전체에 알림이 떠요(어디인지는 몰라요).",
+    "보스는 몸을 맞히면 조금, <b>깜빡이는 약점</b>을 맞히면 크게 깎여요. 같이 때린 사람 모두에게 기여한 만큼 보상이 가요.",
+    "<b>I 키 → 작살총 강화</b>에서 강화석과 코인으로 작살총을 올려요. 사거리 · 속도 · 재장전 · 조준 안정 · 줄 강도가 좋아져요.",
+  ]],
+];
+const guideEl = document.createElement("div");
+guideEl.style.cssText = "position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,30,50,.4);z-index:21;font-family:var(--font)";
+guideEl.innerHTML = `<div id="guideBox" style="width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 40px);display:flex;flex-direction:column;border-radius:20px;background:var(--paper);border:3px solid #fff;outline:3px solid rgba(74,59,82,.12);box-shadow:var(--shadow);color:var(--ink)"><div style="display:flex;align-items:center;gap:8px;padding:12px 16px 8px"><b style="font-size:18px;font-weight:normal;flex:1">📖 안내</b><button id="guideX" style="border:0;background:none;color:var(--ink-soft);font-size:18px;cursor:pointer">✕</button></div><div id="guideTabs" style="display:flex;gap:6px;flex-wrap:wrap;padding:0 16px"></div><div id="guideBody" style="overflow-y:auto;padding:12px 18px 16px;font-size:15px;line-height:1.6"></div></div>`;
+document.body.append(guideEl);
+const guideBody = guideEl.querySelector<HTMLElement>("#guideBody")!, guideTabs = guideEl.querySelector<HTMLElement>("#guideTabs")!;
+function showGuideTab(n: number) {
+  guideBody.innerHTML = "<ul style='margin:0;padding-left:20px'>" + GUIDE[n][1].map((t) => `<li style="margin-bottom:8px">${t}</li>`).join("") + "</ul>";
+  [...guideTabs.children].forEach((b, i) => ((b as HTMLElement).style.cssText = `border:0;border-radius:999px;padding:6px 14px;font:14px var(--font);cursor:pointer;background:${i === n ? "var(--sun)" : "#fff"};color:var(--ink);box-shadow:0 2px 0 ${i === n ? "var(--sun-deep)" : "rgba(74,59,82,.14)"}`));
+}
+GUIDE.forEach(([name], i) => { const b = document.createElement("button"); b.textContent = name; b.addEventListener("click", () => showGuideTab(i)); guideTabs.append(b); });
+function toggleGuide(on = !guideOpen) {
+  if (on && (loading || exitOpen)) return;
+  guideOpen = on;
+  guideEl.style.display = on ? "flex" : "none";
+  if (on) { showGuideTab(0); keys.clear(); stick.x = stick.y = 0; document.exitPointerLock?.(); freeLook = false; canvas.style.cursor = ""; }
+}
+guideEl.addEventListener("click", (e) => { if (e.target === guideEl) toggleGuide(false); });
+guideEl.querySelector("#guideX")!.addEventListener("click", () => toggleGuide(false));
+const guideBtn = document.createElement("button");
+guideBtn.textContent = "📖 안내";
+guideBtn.title = "사용법 안내 (G)";
+guideBtn.style.cssText = "position:fixed;left:50px;top:12px;height:30px;padding:0 12px;border-radius:15px;border:0;background:#fff;color:var(--ink);box-shadow:0 3px 0 rgba(74,59,82,.14);font:14px var(--font);cursor:pointer;z-index:6;display:none";
+document.body.append(guideBtn);
+guideBtn.addEventListener("click", () => toggleGuide(true));
+const guideInHelp = document.createElement("button"); // 조작 창이 펼쳐져 있을 때는 그 안에 안내 단추를 둔다
+guideInHelp.textContent = "📖 사용법 안내 (G)";
+guideInHelp.style.cssText = "margin-top:10px;width:100%;border:0;border-radius:10px;padding:7px 0;background:var(--sun);color:var(--ink);font:14px var(--font);cursor:pointer;box-shadow:0 2px 0 var(--sun-deep)";
+guideInHelp.addEventListener("click", () => toggleGuide(true));
+helpEl.append(guideInHelp);
 showHelp(readSaved("uw.help") !== "seen");
 
 // ---- 멀티: 수중 탐험 채널 -------------------------------------------------------------
@@ -1537,11 +1537,11 @@ const peers = new Map<string, Peer>();
 /** 글자를 그린 판(이름표, 말풍선). 항상 카메라를 본다 */
 function textSprite(lines: string[], font: number, bubble: boolean): THREE.Sprite {
   const c = document.createElement("canvas"), g = c.getContext("2d")!;
-  g.font = `bold ${font}px sans-serif`;
+  g.font = `bold ${font}px Jua, sans-serif`;
   const pad = bubble ? 26 : 12, lh = font * 1.3;
   const w = Math.ceil(Math.max(...lines.map((l) => g.measureText(l).width))) + pad * 2, h = Math.ceil(lines.length * lh) + pad * 2 + (bubble ? 18 : 0);
   c.width = w; c.height = h;
-  g.font = `bold ${font}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+  g.font = `bold ${font}px Jua, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
   if (bubble) { // 흰 말풍선과 꼬리
     g.fillStyle = "rgba(255,255,255,.96)"; g.strokeStyle = "#2a6f9a"; g.lineWidth = 5;
     g.beginPath(); g.roundRect(3, 3, w - 6, h - 24, 24); g.fill(); g.stroke();
@@ -1567,11 +1567,11 @@ function makeBubble(text: string): THREE.Sprite {
 
 // 채팅창(왼쪽 아래)과 입력 칸. Enter 로 열고 Enter 로 보낸다
 const chatLog = document.createElement("div");
-chatLog.style.cssText = "position:fixed;left:12px;bottom:58px;width:min(360px,70vw);display:flex;flex-direction:column;gap:3px;pointer-events:none;font:15px/1.35 sans-serif;color:#fff;text-shadow:0 1px 3px rgba(0,30,50,.9)";
+chatLog.style.cssText = "position:fixed;left:12px;bottom:58px;width:min(360px,70vw);display:flex;flex-direction:column;gap:3px;pointer-events:none;font:15px/1.35 var(--font);color:var(--ink)";
 const chatInput = document.createElement("input");
 chatInput.maxLength = 100;
 chatInput.placeholder = "Enter 를 눌러 채팅";
-chatInput.style.cssText = "position:fixed;left:12px;bottom:14px;width:min(360px,70vw);box-sizing:border-box;padding:9px 14px;border-radius:18px;border:2px solid rgba(255,255,255,.7);background:rgba(10,40,60,.55);color:#fff;font:15px sans-serif;outline:none;opacity:.55";
+chatInput.style.cssText = "position:fixed;left:12px;bottom:14px;width:min(360px,70vw);box-sizing:border-box;padding:7px 14px;border-radius:16px;border:3px solid #e6dff0;background:#fff;color:var(--ink);font:16px var(--font);outline:none;opacity:.7";
 document.body.append(chatLog, chatInput);
 // 화면이 좁으면 아래 가운데의 탈것 칸과 겹치므로 채팅을 그 위로 올린다
 const layoutChat = () => { const up = window.innerWidth < 1100 ? 100 : 0; chatInput.style.bottom = `${14 + up}px`; chatLog.style.bottom = `${58 + up}px`; };
@@ -1579,20 +1579,20 @@ const layoutChat = () => { const up = window.innerWidth < 1100 ? 100 : 0; chatIn
 const chatPanel = document.createElement("div");
 let chatUnread: HTMLElement | null = null; // 창이 닫혀 있을 때 새 글이 오면 채팅 단추에 찍는 점
 if (isTouch) {
-  chatPanel.style.cssText = "position:fixed;left:10px;right:10px;top:56px;max-height:50vh;display:none;flex-direction:column;gap:8px;padding:12px;border-radius:16px;background:rgba(10,40,60,.92);border:2px solid rgba(255,255,255,.5);z-index:8;font-family:sans-serif;color:#fff";
+  chatPanel.style.cssText = "position:fixed;left:10px;right:10px;top:56px;max-height:50vh;display:none;flex-direction:column;gap:8px;padding:12px;border-radius:22px;background:var(--paper);border:3px solid #fff;outline:3px solid rgba(74,59,82,.12);box-shadow:var(--shadow);color:var(--ink);z-index:8";
   const head = document.createElement("div");
-  head.style.cssText = "display:flex;align-items:center;justify-content:space-between;font:bold 15px sans-serif";
-  head.innerHTML = `<span>채팅</span><button aria-label="채팅 닫기" style="border:0;background:none;padding:2px 4px;display:grid;place-items:center">${ICON('<path d="M6 6l12 12M18 6L6 18"/>', 18)}</button>`;
+  head.style.cssText = "display:flex;align-items:center;justify-content:space-between;font:18px var(--font)";
+  head.innerHTML = `<span>채팅</span><button aria-label="채팅 닫기" style="border:0;background:#f0eaf5;color:var(--ink);width:32px;height:32px;border-radius:50%;padding:0;display:grid;place-items:center">${ICON('<path d="M6 6l12 12M18 6L6 18"/>', 18)}</button>`;
   head.querySelector("button")!.addEventListener("click", () => closeChat());
-  chatLog.style.cssText = "display:flex;flex-direction:column;gap:4px;overflow-y:auto;min-height:48px;font:14px/1.4 sans-serif";
+  chatLog.style.cssText = "display:flex;flex-direction:column;gap:4px;overflow-y:auto;min-height:48px;font:14px/1.4 var(--font)";
   const row = document.createElement("div");
   row.style.cssText = "display:flex;gap:8px";
-  chatInput.style.cssText = "flex:1;min-width:0;box-sizing:border-box;padding:10px 14px;border-radius:18px;border:2px solid rgba(255,255,255,.7);background:rgba(255,255,255,.12);color:#fff;font:16px sans-serif;outline:none"; // 16px: 아이폰이 입력 칸을 누를 때 화면을 확대하지 않는 크기
+  chatInput.style.cssText = "flex:1;min-width:0;box-sizing:border-box;padding:8px 14px;border-radius:16px;border:3px solid #e6dff0;background:#fff;color:var(--ink);font:16px var(--font);outline:none"; // 16px: 아이폰이 입력 칸을 누를 때 화면을 확대하지 않는 크기
   chatInput.placeholder = "채팅 입력";
   chatInput.enterKeyHint = "send";
   const send = document.createElement("button");
   send.textContent = "보내기";
-  send.style.cssText = "border:0;border-radius:18px;padding:0 16px;background:#7be0c3;color:#17405c;font:bold 14px sans-serif";
+  send.className = "btn mint small";
   send.addEventListener("click", () => { sendChat(); chatInput.focus(); });
   row.append(chatInput, send);
   chatPanel.append(head, chatLog, row);
@@ -1609,8 +1609,9 @@ function sendChat() {
 }
 function addChatLine(name: string, text: string) {
   const d = document.createElement("div");
-  d.style.cssText = "background:rgba(10,40,60,.5);border-radius:10px;padding:3px 9px;align-self:flex-start;max-width:100%;word-break:break-all";
+  d.style.cssText = "background:rgba(255,255,255,.88);border-radius:14px;padding:4px 11px;align-self:flex-start;max-width:100%;word-break:break-all";
   const b = document.createElement("b");
+  b.style.cssText = "color:var(--pink-deep);font-weight:normal";
   b.textContent = name ? name + "  " : "";
   d.append(b, text);
   chatLog.append(d);
@@ -1639,7 +1640,7 @@ chatInput.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" && e.key !== "Escape") return;
   if (e.key === "Enter") sendChat(); else chatInput.value = "";
   if (isTouch) { if (e.key === "Escape") closeChat(); return; } // 휴대폰은 창을 열어 둔 채 이어서 쓴다
-  chatInput.style.opacity = ".55";
+  chatInput.style.opacity = ".7";
   chatInput.blur();
 });
 chatInput.addEventListener("keyup", (e) => e.stopPropagation());
@@ -1648,8 +1649,8 @@ chatInput.addEventListener("keyup", (e) => e.stopPropagation());
 if (isTouch) {
   const base = "position:fixed;z-index:5;touch-action:none;user-select:none;-webkit-user-select:none";
   const stickEl = document.createElement("div"), knob = document.createElement("i");
-  stickEl.style.cssText = `${base};left:16px;bottom:106px;width:108px;height:108px;border-radius:50%;background:rgba(255,255,255,.28);border:3px solid rgba(255,255,255,.7)`;
-  knob.style.cssText = "position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 3px 0 rgba(0,30,50,.3);pointer-events:none";
+  stickEl.style.cssText = `${base};left:16px;bottom:106px;width:108px;height:108px;border-radius:50%;background:rgba(255,255,255,.4);border:4px solid rgba(255,255,255,.8)`;
+  knob.style.cssText = "position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 4px 0 rgba(74,59,82,.2);pointer-events:none";
   stickEl.append(knob);
   let sid = -1;
   const moveStick = (e: PointerEvent) => {
@@ -1668,11 +1669,11 @@ if (isTouch) {
   stickEl.addEventListener("pointercancel", endStick);
 
   // 단추: 그림과 글자를 함께 넣어 무엇인지 바로 알게 한다
-  const OFF = "rgba(10,40,60,.55)";
+  const OFF = "var(--sky)"; // 달리기 단추의 평소 색
   const mk = (svg: string, label: string, size: number) => {
     const b = document.createElement("button");
-    b.innerHTML = `${ICON(svg, size > 60 ? 26 : 20)}<span style="font:bold ${size > 60 ? 12 : 10}px sans-serif;color:#fff;margin-top:1px">${label}</span>`;
-    b.style.cssText = `position:relative;width:${size}px;height:${size}px;border-radius:50%;border:3px solid rgba(255,255,255,.7);background:${OFF};display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0;touch-action:none;user-select:none;-webkit-user-select:none`;
+    b.innerHTML = `${ICON(svg, size > 60 ? 26 : 20)}<span style="font:${size > 60 ? 12 : 10}px var(--font);margin-top:1px">${label}</span>`;
+    b.style.cssText = `position:relative;width:${size}px;height:${size}px;border-radius:50%;border:0;background:#fff;color:var(--ink);box-shadow:0 4px 0 #d9d2de;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0;touch-action:none;user-select:none;-webkit-user-select:none`;
     return b;
   };
   const viewBtn = mk('<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', "시점", 54);
@@ -1680,13 +1681,14 @@ if (isTouch) {
   const chatBtn = mk('<path d="M4 5h16v11H10l-5 4v-4H4z"/>', "채팅", 54);
   chatBtn.addEventListener("click", () => openChat());
   const dot = document.createElement("i");
-  dot.style.cssText = "position:absolute;right:2px;top:2px;width:13px;height:13px;border-radius:50%;background:#ff5a6e;border:2px solid #fff;display:none";
+  dot.style.cssText = "position:absolute;right:2px;top:2px;width:13px;height:13px;border-radius:50%;background:var(--danger);border:2px solid #fff;display:none";
   chatBtn.append(dot);
   chatUnread = dot;
   // 달리기: 누르고 있는 동안만 빠르게 헤엄친다. 누른 채 손가락을 움직이면 시점도 돌아간다(달리면서 방향을 틀 수 있게)
   const runBtn = mk('<path d="M5 6l6 6-6 6M13 6l6 6-6 6"/>', "달리기", 76);
+  runBtn.style.background = OFF; runBtn.style.boxShadow = "0 5px 0 var(--sky-deep)";
   let rid = -1, rx = 0, ry = 0;
-  runBtn.addEventListener("pointerdown", (e) => { rid = e.pointerId; rx = e.clientX; ry = e.clientY; keys.add("shift"); runBtn.style.background = "rgba(123,224,195,.85)"; try { runBtn.setPointerCapture(rid); } catch { /* 손가락을 못 잡아도 단추 위에서는 동작한다 */ } });
+  runBtn.addEventListener("pointerdown", (e) => { rid = e.pointerId; rx = e.clientX; ry = e.clientY; keys.add("shift"); runBtn.style.background = "var(--mint)"; try { runBtn.setPointerCapture(rid); } catch { /* 손가락을 못 잡아도 단추 위에서는 동작한다 */ } });
   runBtn.addEventListener("pointermove", (e) => { if (e.pointerId !== rid) return; look(e.clientX - rx, e.clientY - ry, 0.007); rx = e.clientX; ry = e.clientY; });
   const endRun = (e: PointerEvent) => { if (e.pointerId !== rid) return; rid = -1; keys.delete("shift"); runBtn.style.background = OFF; };
   runBtn.addEventListener("pointerup", endRun);
@@ -1696,7 +1698,9 @@ if (isTouch) {
   const pad = document.createElement("div"), top = document.createElement("div");
   pad.style.cssText = `${base};right:14px;bottom:106px;display:flex;flex-direction:column;align-items:flex-end;gap:10px`;
   top.style.cssText = "display:flex;gap:10px";
-  top.append(viewBtn, chatBtn);
+  const bagBtn = mk('<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>', "가방", 54);
+  bagBtn.addEventListener("click", () => toggleInv());
+  top.append(viewBtn, chatBtn, bagBtn);
   pad.append(top, runBtn);
   document.body.append(stickEl, pad);
 }
@@ -1722,9 +1726,9 @@ async function joinChannel(id?: string) {
 
 // 채널 고르기: 위 가운데 단추를 누르면 채널 목록이 열리고, 고르면 그 채널로 옮긴다(친구와 같은 채널에 갈 때)
 const chBtn = document.createElement("button");
-chBtn.style.cssText = "position:fixed;left:50%;top:10px;transform:translateX(-50%);padding:6px 16px;border-radius:16px;border:2px solid rgba(255,255,255,.7);background:rgba(10,40,60,.6);color:#fff;font:bold 14px sans-serif;cursor:pointer;z-index:6";
+chBtn.style.cssText = "position:fixed;left:50%;top:10px;transform:translateX(-50%);padding:6px 16px;border-radius:999px;border:0;background:#fff;color:var(--ink);box-shadow:0 3px 0 rgba(74,59,82,.14);font:15px var(--font);cursor:pointer;z-index:6";
 const chList = document.createElement("div");
-chList.style.cssText = "position:fixed;left:50%;top:48px;transform:translateX(-50%);display:none;flex-direction:column;gap:6px;padding:10px;border-radius:14px;background:rgba(10,40,60,.92);border:2px solid rgba(255,255,255,.6);z-index:6;min-width:170px";
+chList.style.cssText = "position:fixed;left:50%;top:48px;transform:translateX(-50%);display:none;flex-direction:column;gap:6px;padding:12px;border-radius:20px;background:var(--paper);border:3px solid #fff;outline:3px solid rgba(74,59,82,.12);box-shadow:var(--shadow);color:var(--ink);z-index:6;min-width:170px";
 document.body.append(chBtn, chList);
 let chBusy = false;
 chBtn.addEventListener("click", async () => {
@@ -1736,7 +1740,7 @@ chBtn.addEventListener("click", async () => {
     const b = document.createElement("button"), here = room?.roomId === c.id, full = c.players >= c.max;
     b.textContent = `${c.channel}채널  ${c.players}/${c.max}명${here ? "  (여기)" : full ? "  (가득)" : ""}`;
     b.disabled = here || full;
-    b.style.cssText = `padding:7px 12px;border-radius:10px;border:0;font:bold 14px sans-serif;cursor:${b.disabled ? "default" : "pointer"};background:${here ? "#7be0c3" : full ? "#8a98a3" : "#fff"};color:#17405c`;
+    b.style.cssText = `padding:7px 14px;border-radius:999px;border:0;font:15px var(--font);cursor:${b.disabled ? "default" : "pointer"};background:${here ? "var(--mint)" : full ? "#e6e0ea" : "var(--sky)"};color:var(--ink)`;
     b.addEventListener("click", async () => {
       if (chBusy) return;
       chBusy = true;
@@ -1750,6 +1754,34 @@ chBtn.addEventListener("click", async () => {
     chList.append(b);
   }
   chList.style.display = "flex";
+});
+
+// 인벤토리(I 키): 낚시 방과 같은 목록. 열려 있는 동안은 조작·발사를 막고 마우스 고정을 푼다
+let invOpen = false;
+const invHost = document.createElement("div");
+document.body.append(invHost);
+const invRoot = createRoot(invHost);
+function toggleInv() {
+  if (loading || exitOpen) return;
+  invOpen = !invOpen;
+  if (invOpen) { keys.clear(); stick.x = stick.y = 0; document.exitPointerLock?.(); freeLook = false; canvas.style.cursor = ""; }
+  invRoot.render(invOpen ? createElement(UwInventory, { room, divers: () => room?.state?.players?.size ?? 1, onHarpoon: (l: number) => hunt.setLevel(l), onClose: toggleInv }) : null);
+}
+
+// 작살 사냥(조준·던지기·조개 줍기)은 uwHunt.ts. 채널에 들어가 있을 때만 동작한다
+const hunt = createHunt({
+  scene, camera, player, isTouch,
+  zone: () => curZone,
+  room: () => room,
+  firstPerson: () => firstPerson,
+  setYaw: (y) => { player.yaw = y; },
+  setFirstPerson: (on) => { firstPerson = on; },
+  hand: (side, out) => (rig ? rig.handWorld(side, out) : null),
+  posOf: (sid) => (sid === mySid ? player.pos : peers.get(sid)?.pos ?? null),
+  aiming: () => locked() || freeLook,
+  blocked: () => !!loading || exitOpen || invOpen || guideOpen || !!trans || document.activeElement === chatInput,
+  makeFish, flatten, heightAt,
+  say: (text) => addChatLine("", text),
 });
 
 let sendTimer = 0;
@@ -1861,7 +1893,7 @@ function loop() {
     // 헤엄칠 때는 몸을 앞으로 눕힌다. 위로 오를 때는 덜, 아래로 내려갈 때는 더 눕는다. 제자리에서는 거의 서 있는다
     const wantTilt = riding ? 0 : 0.12 + swimK * Math.min(1.5, Math.max(0.3, 1.2 - Math.atan2(player.vel.y, Math.max(hsp, 2)) * 0.9));
     swimTilt += (wantTilt - swimTilt) * Math.min(1, dt * 6);
-    rig.update(dt, { moving: false, fishing: "idle", ride: riding, swim: riding ? undefined : { k: swimK, style: swimStyle } }, riding && mount ? mount.yaw : player.yaw);
+    rig.update(dt, { moving: false, fishing: "idle", ride: riding, swim: riding ? undefined : { k: swimK, style: swimStyle }, aim: riding ? undefined : hunt.aimPose() }, riding && mount ? mount.yaw : player.yaw);
     // 발이 아니라 가슴께(H)를 축으로 눕혀서, 누워도 몸 가운데가 제자리에 있게 한다
     const H = 1.0, yw = rig.root.rotation.y, st = Math.sin(swimTilt), bob = riding ? 0 : Math.sin(t * 1.6) * 0.12;
     rig.root.rotation.x = swimTilt;
@@ -1869,6 +1901,7 @@ function loop() {
   }
   updateSwimBubbles(dt);
   updatePeers(dt, moving);
+  hunt.update(dt, t);
   updateFpArms(dt);
   gateCooldown -= dt;
   if (!trans && gateCooldown <= 0) for (const g of gates) if (crossedBoundary(g)) { trans = { t0: t, gate: g, teleported: false }; break; }
@@ -1879,7 +1912,6 @@ function loop() {
   }
   schools.forEach((s) => updateSchool(s, t, dt));
   roamers.forEach((r) => updateRoamer(r, t, dt));
-  updateTurtles(t, dt);
   updateRideFx();
   if (mount && ridePhase !== "none") {
     const hs = Math.hypot(player.vel.x, player.vel.z), e = t - rideT0;
@@ -1927,6 +1959,7 @@ function loop() {
   // 카메라: 캐릭터 뒤에서 따라간다. 바닥 아래로 내려가지 않게 한다
   const cp = Math.cos(camPitch);
   const target = player.pos.clone().add(new THREE.Vector3(0, 1.2, 0));
+  if (!firstPerson) target.addScaledVector(new THREE.Vector3(-Math.cos(camYaw), 0, Math.sin(camYaw)), 1.3 * hunt.shoulder()); // 작살총을 들 때는 어깨 너머로 본다: 캐릭터가 한쪽으로 비켜서 십자선이 가려지지 않는다
   const want = new THREE.Vector3(target.x - Math.sin(camYaw) * cp * camDist, target.y + Math.sin(camPitch) * camDist, target.z - Math.cos(camYaw) * cp * camDist);
   const toCam = want.clone().sub(target), cd = toCam.length();
   const blocked = cd > 0.1 ? hitSolid(target, toCam.divideScalar(cd), cd) : undefined; // 벽이 가리면 카메라를 벽 앞으로 당긴다
@@ -1944,6 +1977,7 @@ function loop() {
   // 안내문
   hud.style.display = loading ? "" : "none"; // 불러오는 동안에만 가운데에 진행 상황을 보여 준다
   if (loading && frame % 6 === 0) hud.textContent = loading;
+  hunt.late(); // 작살총은 카메라 위치가 정해진 뒤에 놓는다
   autoQuality(dt);
   if (frame % 12 === 0) updateSlotBar();
   eng.render();
@@ -1975,45 +2009,7 @@ async function start() {
   buildGates();
   loading = "테마 구조물을 만드는 중..."; await tick();
   buildFlag(); await tick();
-  buildJellies();
-  buildTurtles();
-  // 물고기떼 템플릿 20종 (위치는 계속 새로 정해진다)
-  const schoolJobs: Array<() => void> = [];
-  for (let k = 0; k < 20; k++) schoolJobs.push(() => addSchool(schoolPool[(k * 7) % schoolPool.length], 8 + (k % 5), 0.75 + (k % 3) * 0.2));
-  for (let j = 0; j < schoolJobs.length; j++) { loading = `물고기를 만드는 중... ${j + 1}/${schoolJobs.length}`; await tick(); schoolJobs[j](); }
-  // 큰 생물: 고래, 상어, 가오리
-  loading = "큰 생물을 만드는 중..."; await tick();
-  const whale = pickSp((s) => s.body === "whale" && s.rarity === "legendary");
-  if (whale) addRoamer(whale, 17, { speed: [2.5, 3.5], above: [8, 14], ring: [120, 150], gone: 220, vis: 150 });
-  const shark = pickSp((s) => s.body === "shark" && s.rarity !== "mythic");
-  if (shark) for (let k = 0; k < 4; k++) addRoamer(shark, 3 + k * 0.2, { speed: [4, 6], above: [4, 10], ring: [100, 120], gone: 150, vis: 130 });
-  // 구역에만 사는 생물: [구역, 이름, 마릿수, 몸길이(m)]. 우리 도감에서 그곳에 나올 법한 물고기를 골랐다
-  const LOCALS: Array<[number, string, number, number]> = [
-    // 난파선 지대: 가라앉은 배에 숨어 사는 것들과 해적 전설의 크라켄
-    [2, "문어", 1, 1.2], [2, "갑오징어", 1, 0.8], [2, "대왕문어", 1, 3.5], [2, "리본장어", 1, 1.6], [2, "거북복", 1, 0.7], [2, "산호불꽃쏠배감펭", 1, 1.0], [2, "까치상어", 1, 2.2], [2, "크라켄", 1, 9.0],
-    // 심해 협곡
-    [4, "심연등불아귀", 2, 2.2], [4, "아귀", 1, 1.2], [4, "등불갈치", 1, 2.2], [4, "도깨비상어", 1, 3.4], [4, "주름상어", 1, 3.0], [4, "그린란드상어", 1, 5.0],
-    [4, "유령날개가오리", 1, 4.0], [4, "블랙홀장어", 1, 3.2], [4, "대왕오징어", 1, 6.0], [4, "홍월흡혈오징어", 1, 1.6], [4, "심해갑옷어", 1, 1.4],
-    [4, "심해수정해파리", 1, 1.6], [4, "심해 해파리고기", 1, 1.2], [4, "심연의 흑룡", 1, 9.0],
-    // 산호 숲: 산호를 뜯고 틈에 숨어 사는 것들
-    [0, "앵무고기", 2, 1.0], [0, "풍선복어", 1, 0.6], [0, "거북복", 1, 0.6], [0, "해초왕해마", 1, 1.2], [0, "쥐치", 2, 0.6],
-    // 거북이 모래 만: 모래 위를 낮게 나는 가오리
-    [5, "만타가오리", 1, 4.5], [5, "가오리", 2, 1.8], [5, "눈꽃가오리", 1, 2.2],
-  ];
-  for (const [zone, name, count, len] of LOCALS) {
-    const sp = SPECIES.find((q) => q.name === name);
-    if (!sp) { console.warn("구역 생물 없음", name); continue; }
-    for (let k = 0; k < count; k++) addRoamer(sp, len * (1 + k * 0.15), { speed: [1.2, 2.4], above: [3, 14], ring: [40, 85], gone: 115, vis: 75, zone });
-  }
-  // 구역의 물고기떼: [구역, 이름, 마릿수]. 이 구역들에는 다른 곳의 물고기떼가 들어오지 않는다
-  for (const [zone, name, n] of [[2, "우럭", 10], [2, "볼락", 9], [2, "참돔", 7], [2, "감성돔", 8], [2, "전갱이", 12], [2, "고등어", 12], [4, "형광오징어", 9], [4, "하얀유령어", 10], [4, "형광오징어", 7],
-    [0, "흰동가리", 9], [0, "블루탱", 10], [0, "나비고기", 9], [0, "놀래기", 8], [0, "쥐돔", 8], [0, "흰동가리", 7], [0, "청소놀래기", 10], [0, "블루탱", 7],
-    [5, "블루탱", 10], [5, "나비고기", 9], [5, "흰동가리", 6], [5, "청소놀래기", 12], [5, "쥐돔", 8]] as Array<[number, string, number]>) {
-    const sp = SPECIES.find((q) => q.name === name);
-    if (sp) addSchool(sp, n, 0.9, zone); else console.warn("구역 물고기떼 없음", name);
-  }
-  const ray = pickSp((s) => s.body === "ray");
-  if (ray) for (let k = 0; k < 2; k++) addRoamer(ray, 3 + k * 0.2, { speed: [2, 3], above: [2, 6], ring: [95, 115], gone: 140, vis: 125 });
+  // 구경용 물고기(떼, 고래, 상어, 구역 생물)는 두지 않는다. 눈에 보이는 물고기는 전부 서버가 내보내는 잡을 수 있는 물고기다(uwHunt.ts)
   // 신화 탈것 비교: 시작 지점 옆에 신화 물고기와 캐릭터를 태워 둔다
   loading = "캐릭터를 준비하는 중..."; await tick();
   await loadCharacterModel().catch(() => {});
@@ -2038,6 +2034,7 @@ async function start() {
   if (m2) addRoamer(m2, 6, { speed: [3, 4], above: [4, 9], ring: [100, 120], gone: 150, vis: 130 });
   prewarm();
   loading = "";
+  if (me) hunt.setLevel(harpoonLevelOf(me.equipped));
   if (me && auth.token) await joinChannel().catch((e) => console.warn("수중 채널 접속 실패", e));
   if (params.get("zone")) teleport(Number(params.get("zone")) - 1);
   const at = params.get("at")?.split(",").map(Number); // 확인용: &at=x,y,z
@@ -2050,4 +2047,4 @@ loop();
 start().catch((e) => { console.error(e); hud.textContent = "불러오기 오류: " + e; });
 (window as any).__scene = scene;
 (window as any).__eng = eng; // 성능 측정용
-(window as any).__dbg = { loading: () => loading, quality: () => quality, player, gates, toGate, wallAt, callMount, slots: mountSlots, setSlot: (slot: number, i: number) => { mountSlots[slot] = mythList[i]; }, myth: () => mythList.map((s) => s.name), mount: () => mount, phase: () => ridePhase }; // 이동 지점 확인용
+(window as any).__dbg = { HARPOON, hunt, makeFish, flatten, scene, room: () => room, setCam: (y: number, p: number, first?: boolean) => { camYaw = y; camPitch = p; if (first !== undefined) firstPerson = first; }, loading: () => loading, quality: () => quality, player, gates, toGate, wallAt, callMount, slots: mountSlots, setSlot: (slot: number, i: number) => { mountSlots[slot] = mythList[i]; }, myth: () => mythList.map((s) => s.name), mount: () => mount, phase: () => ridePhase }; // 이동 지점 확인용

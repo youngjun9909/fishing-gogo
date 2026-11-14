@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { BAITS, BASE_MAPS, CODEX_REWARDS, ITEMS, MAX_ROD, ROD_SELL_BONUS, RODS, SPECIES, STONES_PER_FISH, codexSpeciesFor, itemById, rodEffects, rodLevelOf, sellPrice, speciesById } from "@fishing/shared";
+import { BAITS, BASE_MAPS, CODEX_REWARDS, ITEMS, MAX_ROD, ROD_SELL_BONUS, RODS, SPECIES, STONES_PER_FISH, UW_FISH, UW_ZONE_NAMES, codexSpeciesFor, itemById, rodEffects, rodLevelOf, sellPrice, speciesById } from "@fishing/shared";
 import type { Appearance, CatchRecord, CodexEntry, MapId, PlayerProfile, ShopItem } from "@fishing/shared";
 import { getAudio, setMuted, setVolume, sfx } from "../audio";
 import { api, auth } from "../net";
@@ -9,6 +9,7 @@ import type { Look } from "../three/character";
 import { LobbyScene } from "../three/LobbyScene";
 import { buildBait } from "../three/baits";
 import { buildRod } from "../three/rods";
+import { buildHarpoonGun } from "../three/uwProps";
 import { FishIcon, RARITY_COLOR, RARITY_LABEL } from "./FishIcon";
 
 type Modal = null | "create" | "rooms" | "join" | "inventory" | "codex" | "mounts" | "shop" | "settings";
@@ -213,18 +214,21 @@ function useFetch<T>(path: string, deps: unknown[] = []) {
   return [data, () => setTick((t) => t + 1), error] as const;
 }
 
-export function Inventory({ onClose, reload, rod, canSell = true }: { onClose: () => void; reload: () => Promise<void>; rod: number; canSell?: boolean }) {
+/** uw: 수중 탐험에서 열었을 때. 수중에서 잡은 것(uw-)만 그 방에서 팔 수 있고(채널 인원 보너스 mul 이 붙는다), 낚시로 잡은 것은 흐리게 보인다. extra 는 위쪽 단추 줄에 끼우는 것 */
+export function Inventory({ onClose, reload, rod, canSell = true, uw, extra }: { onClose: () => void; reload: () => Promise<void>; rod: number; canSell?: boolean; uw?: { mul: number; sell: (ids: string[]) => Promise<{ sold: number; earned: number; stones: number; mul: number }> }; extra?: React.ReactNode }) {
   const [list, refetch, loadError] = useFetch<CatchRecord[]>("/api/inventory");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState("");
+  const mul = uw?.mul ?? 1;
+  const sellable = (id: string) => !uw || id.startsWith("uw-");
   const picked = (list ?? []).filter((c) => sel.has(c.id));
-  const total = picked.reduce((a, c) => a + sellPrice(speciesById(c.speciesId)!, c.size, rod), 0);
+  const total = picked.reduce((a, c) => a + Math.round(sellPrice(speciesById(c.speciesId)!, c.size, rod) * mul), 0);
   const stonesTotal = picked.reduce((a, c) => a + STONES_PER_FISH[speciesById(c.speciesId)!.rarity], 0);
   const sorted = [...(list ?? [])].sort((a, b) => b.caughtAt - a.caughtAt);
 
   const sell = async () => {
     try {
-      const r = await api("/api/sell", { ids: [...sel] });
+      const r = uw ? await uw.sell([...sel]) : await api("/api/sell", { ids: [...sel] });
       sfx.success("rare");
       setMsg(`${r.sold}마리를 팔아서 🪙 ${r.earned}과 💎 강화석 ${r.stones}개를 받았어요!`);
       setSel(new Set());
@@ -239,9 +243,10 @@ export function Inventory({ onClose, reload, rod, canSell = true }: { onClose: (
     <Modal title={`🎒 인벤토리 (${list?.length ?? 0}마리)`} onClose={onClose}>
       {canSell ? (
         <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <button className="btn small ghost" onClick={() => setSel(new Set(sorted.map((c) => c.id)))}>모두 선택</button>
+          <button className="btn small ghost" onClick={() => setSel(new Set(sorted.filter((c) => sellable(c.speciesId)).map((c) => c.id)))}>모두 선택</button>
           <button className="btn small ghost" onClick={() => setSel(new Set())}>선택 해제</button>
           <button className="btn small sun" disabled={!sel.size} onClick={sell}>선택한 {sel.size}마리 팔기 (🪙 {total} · 💎 {stonesTotal})</button>
+          {extra}
           <span className="hint">{msg}</span>
         </div>
       ) : (
@@ -260,11 +265,12 @@ export function Inventory({ onClose, reload, rod, canSell = true }: { onClose: (
             <button
               key={c.id}
               className={`cell ${sel.has(c.id) ? "sel" : ""}`}
-              onClick={() => canSell && setSel((s) => { const n = new Set(s); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })}
+              style={sellable(c.speciesId) ? undefined : { opacity: 0.55 }}
+              onClick={() => canSell && sellable(c.speciesId) && setSel((s) => { const n = new Set(s); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })}
             >
               <FishIcon sp={sp} size={92} />
               <div className="nm">{sp.name}</div>
-              <div className="sub">{c.size}cm · 🪙 {sellPrice(sp, c.size, rod)} · 💎 {STONES_PER_FISH[sp.rarity]}</div>
+              <div className="sub">{c.size}cm · 🪙 {Math.round(sellPrice(sp, c.size, rod) * (sellable(c.speciesId) ? mul : 1))} · 💎 {STONES_PER_FISH[sp.rarity]}</div>
               <span className="badge" style={{ background: RARITY_COLOR[sp.rarity] }}>{RARITY_LABEL[sp.rarity]}</span>
             </button>
           );
@@ -276,21 +282,31 @@ export function Inventory({ onClose, reload, rod, canSell = true }: { onClose: (
 
 function Codex({ onClose, profile }: { onClose: () => void; profile: PlayerProfile }) {
   const [codex] = useFetch<CodexEntry[]>("/api/codex");
-  const [tab, setTab] = useState<MapId | "all">("lake");
+  const [tab, setTab] = useState<MapId | "all" | "uw">("lake");
   const known = new Map((codex ?? []).map((c) => [c.speciesId, c]));
-  const list = tab === "all" ? SPECIES : codexSpeciesFor(tab);
+  const [uwZone, setUwZone] = useState(0); // 수중 도감은 구역별로 나눠 본다(마지막 칸은 조개)
+  const list = tab === "all" ? SPECIES : tab === "uw" ? UW_FISH.filter((s) => s.id.startsWith(uwZone < UW_ZONE_NAMES.length ? `uw-${uwZone}-` : "uw-s-")) : codexSpeciesFor(tab);
   const got = list.filter((s) => known.has(s.id)).length;
-  const names: Record<string, string> = { lake: "🌳 호수", pier: "⚓ 부두", ice: "❄️ 얼음", cruise: "🚢 크루즈", all: "📚 전체" };
+  const names: Record<string, string> = { lake: "🌳 호수", pier: "⚓ 부두", ice: "❄️ 얼음", cruise: "🚢 크루즈", all: "📚 전체", uw: "🌊 수중" };
   const rewards = CODEX_REWARDS.filter((r) => r.mapId === tab);
 
   return (
     <Modal title="📖 물고기 도감" onClose={onClose}>
       <div className="tabs">
-        {(["lake", "pier", "ice", "cruise", "all"] as const).map((t) => (
+        {(["lake", "pier", "ice", "cruise", "uw", "all"] as const).map((t) => (
           <button key={t} className={`tab ${tab === t ? "on" : ""}`} onClick={() => setTab(t)}>{names[t]}</button>
         ))}
         <span className="chip" style={{ marginLeft: "auto" }}>{got} / {list.length}</span>
       </div>
+      {tab === "uw" && (
+        <div className="tabs">
+          {[...UW_ZONE_NAMES, "조개"].map((n, i) => (
+            <button key={n} className={`tab ${uwZone === i ? "on" : ""}`} style={{ fontSize: 14, padding: "6px 12px" }} onClick={() => setUwZone(i)}>
+              {n} {UW_FISH.filter((s) => s.id.startsWith(i < UW_ZONE_NAMES.length ? `uw-${i}-` : "uw-s-") && known.has(s.id)).length}/{i < UW_ZONE_NAMES.length ? 50 : 3}
+            </button>
+          ))}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {rewards.map((r) => (
           <span key={r.id} className="chip" style={{ opacity: profile.claimedRewards.includes(r.id) ? 1 : 0.55 }}>
@@ -497,6 +513,8 @@ export function ModelPreview({ k, make, camZ, rotZ = 0 }: { k: string; make: () 
   return <div className="rod-preview" ref={ref} />;
 }
 
+/** 작살총 단계별 모습(강화 창). 총은 앞뒤로 길어서 옆으로 돌려 보여 준다 */
+export const HarpoonPreview = ({ level }: { level: number }) => <ModelPreview k={`hp${level}`} make={() => { const f = buildHarpoonGun(level), w = new THREE.Group(); f.group.rotation.y = Math.PI / 2; f.group.position.x = -0.75; w.add(f.group); return { group: w, update: (t) => f.update(t) }; }} camZ={5.2} rotZ={0.35} />;
 export const RodPreview = ({ level }: { level: number }) => <ModelPreview k={`rod${level}`} make={() => buildRod(level)} camZ={4.1} rotZ={0.5} />;
 const BaitPreview = ({ id }: { id: string }) => <ModelPreview k={id} make={() => { const f = buildBait(id); return { group: f.group, update: (t) => f.update(t) }; }} camZ={3.6} />;
 

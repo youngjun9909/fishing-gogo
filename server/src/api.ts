@@ -21,6 +21,7 @@ export function createApi(
     "POST /api/sell": (id, b) => service.sell(id, Array.isArray(b.ids) ? b.ids : []),
     "POST /api/buy": (id, b) => service.buy(id, b.itemId),
     "POST /api/rod/upgrade": (id) => service.upgradeRod(id),
+    "POST /api/harpoon/upgrade": (id) => service.upgradeHarpoon(id),
     "POST /api/diag": async (id, b) => { recordDiag({ ...cleanClientDiag(b), player: id.slice(0, 8) }); return { ok: true }; },
     "POST /api/stone/buy": (id, b) => service.buyStones(id, Number(b.count)),
     "POST /api/bait/buy": (id, b) => service.buyBait(id, String(b.baitId)),

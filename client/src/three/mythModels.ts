@@ -10,7 +10,7 @@ const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const PI2 = Math.PI * 2;
 
 let _glow: THREE.CanvasTexture | null = null, _rays: THREE.CanvasTexture | null = null;
-function glowTex() {
+export function glowTex() {
   if (!_glow) {
     const c = document.createElement("canvas"); c.width = c.height = 128;
     const x = c.getContext("2d")!;
@@ -21,7 +21,7 @@ function glowTex() {
   }
   return _glow;
 }
-function raysTex() {
+export function raysTex() {
   if (!_rays) {
     const c = document.createElement("canvas"); c.width = c.height = 256;
     const x = c.getContext("2d")!;
@@ -39,7 +39,7 @@ function raysTex() {
 }
 
 /** 도는 고리(흰 선 + 색 구슬) */
-function ring(g: THREE.Group, anim: Anim, radius: number, tilt: number, speed: number, color: string, beads = 6) {
+export function ring(g: THREE.Group, anim: Anim, radius: number, tilt: number, speed: number, color: string, beads = 6) {
   const grp = new THREE.Group();
   grp.name = "fx";
   grp.rotation.set(tilt, 0, tilt * 0.5);
@@ -59,7 +59,7 @@ function ring(g: THREE.Group, anim: Anim, radius: number, tilt: number, speed: n
 }
 
 /** 신화 전용 마무리: 겹 후광 2겹, 부드러운 빛 덩어리, 회전하는 빛 줄기, 도는 고리 3개, 많은 입자 */
-function finishMythic(g: THREE.Group, anim: Anim, k: number, c1: string, c2: string, halo: [number, number, number], spark = 46) {
+export function finishMythic(g: THREE.Group, anim: Anim, k: number, c1: string, c2: string, halo: [number, number, number], spark = 46) {
   const s1 = auraShell(new THREE.SphereGeometry(0.5, 36, 24), C(c1));
   s1.scale.set(...halo);
   const s2 = auraShell(new THREE.SphereGeometry(0.5, 36, 24), C(c2));
@@ -91,7 +91,7 @@ function finishMythic(g: THREE.Group, anim: Anim, k: number, c1: string, c2: str
 }
 
 /** 크고 둥근 눈: 테두리 + 눈동자(둥글거나 세로로 가는) + 반사광 */
-function eyeBall(r: number, rim: string, pupil: "round" | "slit" = "round", emissive = 0.9) {
+export function eyeBall(r: number, rim: string, pupil: "round" | "slit" = "round", emissive = 0.9) {
   const e = new THREE.Group();
   e.add(new THREE.Mesh(new THREE.SphereGeometry(r, 24, 18), new THREE.MeshPhysicalMaterial({ color: rim, emissive: rim, emissiveIntensity: emissive, roughness: 0.2, clearcoat: 1 })));
   const p = new THREE.Mesh(new THREE.SphereGeometry(r * 0.66, 20, 14), new THREE.MeshPhysicalMaterial({ color: 0x07040c, roughness: 0.06, clearcoat: 1 }));
@@ -108,7 +108,7 @@ function eyeBall(r: number, rim: string, pupil: "round" | "slit" = "round", emis
 interface DragonOpts {
   skin: THREE.Material; belly?: THREE.Material; horn: string; eye: string; slit?: boolean; whisker?: string; fang?: boolean; hornSweep?: number; mane?: string;
 }
-function dragonHead(o: DragonOpts) {
+export function dragonHead(o: DragonOpts) {
   const h = new THREE.Group();
   const hornM = glow(o.horn, 0.5);
   h.add(flat(o.skin, [0, 0, 0], [0.95, 0.72, 0.85]));
@@ -156,7 +156,7 @@ interface SerpentOpts {
   cracks?: string; waves?: number;
 }
 /** 구슬을 이어 만든 긴 몸. 매 프레임 S자로 물결치고 머리·꼬리·장식이 따라간다 */
-function serpent(g: THREE.Group, anim: Anim, o: SerpentOpts) {
+export function serpent(g: THREE.Group, anim: Anim, o: SerpentOpts) {
   const sphG = new THREE.SphereGeometry(1, 18, 14);
   const segs: THREE.Mesh[] = [], spikes: THREE.Mesh[] = [], gems: THREE.Mesh[] = [], plates: THREE.Mesh[] = [], cracks: THREE.Mesh[] = [];
   const rOf = (u: number) => o.radius * (1 - 0.8 * Math.pow(u, 1.25)) + 0.025;

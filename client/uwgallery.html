@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>수중 물고기 모아 보기</title>
+    <style>
+      body { margin: 0; background: #2a6a8a; font: 14px "Malgun Gothic", sans-serif; color: #fff; }
+      #nav { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px; position: sticky; top: 0; background: #1f5672; }
+      #nav a { color: #fff; text-decoration: none; padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,.15); }
+      #nav a.on { background: #ffd45a; color: #4a3b52; }
+      #g { display: grid; grid-template-columns: repeat(auto-fill, 190px); gap: 8px; padding: 10px; }
+      #g div { background: rgba(255,255,255,.14); border-radius: 12px; text-align: center; padding: 6px 4px 10px; }
+      #g img { width: 180px; height: 120px; display: block; margin: 0 auto 2px; }
+      #g.big { grid-template-columns: repeat(auto-fill, 350px); }
+      #g.big img { width: 340px; height: 227px; }
+      #g b { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: normal; padding: 1px 8px; border-radius: 999px; }
+    </style>
+  </head>
+  <body>
+    <div id="nav"></div>
+    <div id="g"></div>
+    <script type="module" src="/src/uwgallery.ts"></script>
+  </body>
+</html>

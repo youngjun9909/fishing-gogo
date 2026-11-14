@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { MAX_ROD, RODS, STONE_PRICE, ROD_SELL_BONUS, rarityOdds, rodEffects, rodLevelOf } from "@fishing/shared";
+import { HARPOONS, MAX_HARPOON, MAX_ROD, RODS, STONE_PRICE, ROD_SELL_BONUS, harpoonLevelOf, harpoonStats, rarityOdds, rodEffects, rodLevelOf } from "@fishing/shared";
 import type { PlayerProfile } from "@fishing/shared";
 import { sfx } from "../audio";
 import { api } from "../net";
-import { RodPreview } from "./Lobby";
+import { HarpoonPreview, RodPreview } from "./Lobby";
 
 type Phase = "idle" | "charging" | "success" | "fail" | "result";
 interface Result { success: boolean; from: number; to: number; spent: { stones: number; coins: number } }
@@ -11,7 +11,16 @@ interface Result { success: boolean; from: number; to: number; spent: { stones: 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** 단계에 따른 능력치(강화 전후를 비교해서 보여 준다) */
-function stats(level: number): Array<[string, string]> {
+function stats(level: number, harpoon = false): Array<[string, string]> {
+  if (harpoon) {
+    const h = harpoonStats(level);
+    return [
+      ["사거리", `${h.range.toFixed(1)}m`],
+      ["작살 속도", `${h.speed.toFixed(1)}m/s`],
+      ["재장전", `${(h.cooldownMs / 1000).toFixed(2)}초`],
+      ["조준 안정", `${Math.round((1 - h.steady) * 100)}%`],
+    ];
+  }
   const e = rodEffects(level);
   const o = rarityOdds(level);
   const pct = (x: number) => `${(x * 100).toFixed(2)}%`; // 신화처럼 작은 값도 보이게 소수 둘째 자리까지
@@ -27,9 +36,12 @@ function stats(level: number): Array<[string, string]> {
 }
 
 /** 대장장이에게서 낚싯대를 강화하는 화면: 재료와 코인을 보여 주고, 불꽃 연출 뒤에 성공·실패 결과를 보여 준다 */
-export function Forge({ profile, reload, onClose }: { profile: PlayerProfile; reload: () => Promise<void>; onClose: () => void }) {
-  const level = rodLevelOf(profile.equipped);
-  const next = level < MAX_ROD ? RODS[level + 1] : null;
+export function Forge({ profile, reload, onClose, kind = "rod", onUpgraded }: { profile: PlayerProfile; reload: () => Promise<void>; onClose: () => void; kind?: "rod" | "harpoon"; onUpgraded?: () => void }) {
+  const H = kind === "harpoon"; // 수중 탐험의 작살총 강화도 같은 화면을 쓴다
+  const TABLE = H ? HARPOONS : RODS, MAX = H ? MAX_HARPOON : MAX_ROD, NAME = H ? "작살총" : "낚싯대";
+  const Pv = ({ level }: { level: number }) => (H ? <HarpoonPreview level={level} /> : <RodPreview level={level} />);
+  const level = H ? harpoonLevelOf(profile.equipped) : rodLevelOf(profile.equipped);
+  const next = level < MAX ? TABLE[level + 1] : null;
   const haveStones = profile.stones ?? 0;
   const haveCoins = profile.coins;
   const enough = !!next && haveStones >= next.cost && haveCoins >= next.coins;
@@ -60,7 +72,7 @@ export function Forge({ profile, reload, onClose }: { profile: PlayerProfile; re
     sfx.reel();
     const t0 = Date.now();
     try {
-      const r = await api("/api/rod/upgrade", {});
+      const r = await api(H ? "/api/harpoon/upgrade" : "/api/rod/upgrade", {});
       await sleep(Math.max(0, 1800 - (Date.now() - t0))); // 모으는 연출은 항상 같은 길이
       const out: Result = { success: !!r.success, from: level, to: r.success ? level + 1 : level, spent: r.spent };
       setRes(out);
@@ -69,6 +81,7 @@ export function Forge({ profile, reload, onClose }: { profile: PlayerProfile; re
       await sleep(1700);
       setPhase("result");
       await reload(); // 결과 창이 뜬 다음에 내 정보를 새로 읽는다
+      onUpgraded?.();
     } catch (e) {
       setPhase("idle");
       setErr(e instanceof Error ? e.message : "강화하지 못했어요");
@@ -76,16 +89,16 @@ export function Forge({ profile, reload, onClose }: { profile: PlayerProfile; re
   };
 
   const showLevel = phase === "result" && res ? res.to : level;
-  const cur = stats(level), nxt = next ? stats(level + 1) : null;
+  const cur = stats(level, H), nxt = next ? stats(level + 1, H) : null;
 
   return (
     <div className="forge-back" onClick={phase === "idle" ? onClose : undefined}>
       <div className={`forge ${phase === "charging" ? "shake" : ""} ${phase === "fail" ? "fail" : ""}`} onClick={(e) => e.stopPropagation()}>
         <button className="forge-x" onClick={onClose} disabled={phase !== "idle"} aria-label="닫기">✕</button>
-        <div className="forge-title">🔨 낚싯대 강화</div>
+        <div className="forge-title">🔨 {NAME} 강화</div>
 
-        <div className="forge-item"><RodPreview level={showLevel} /></div>
-        <div className="forge-name">{RODS[showLevel].name}</div>
+        <div className="forge-item"><Pv level={showLevel} /></div>
+        <div className="forge-name">{TABLE[showLevel].name}</div>
         {next ? (
           <div className="forge-step"><b>{level}단계</b> <span className="arrows">›››</span> <b className="to">{level + 1}단계</b></div>
         ) : (
@@ -133,10 +146,10 @@ export function Forge({ profile, reload, onClose }: { profile: PlayerProfile; re
             <button key={n} disabled={phase !== "idle" || haveCoins < n * STONE_PRICE} onClick={() => void buy(n)}>{n}개 · 🪙 {(n * STONE_PRICE).toLocaleString()}</button>
           ))}
         </div>
-        <p className="forge-hint">확률은 네 맵·낮밤 평균이에요. 강화는 확률로 성공해요. 실패하면 강화석과 코인만 사라지고 단계는 그대로예요.</p>
+        <p className="forge-hint">{H ? "" : "확률은 네 맵·낮밤 평균이에요. "}강화는 확률로 성공해요. 실패하면 강화석과 코인만 사라지고 단계는 그대로예요.</p>
         {err && <p className="err">{err}</p>}
         <button className="forge-go" disabled={!enough || phase !== "idle"} onClick={go}>
-          {!next ? "이미 가장 좋은 낚싯대예요" : !enough ? "재료나 코인이 부족해요" : "낚싯대 강화"}
+          {!next ? `이미 가장 좋은 ${NAME}이에요` : !enough ? "재료나 코인이 부족해요" : `${NAME} 강화`}
         </button>
 
         {/* 강화 결과 창 */}
@@ -144,17 +157,17 @@ export function Forge({ profile, reload, onClose }: { profile: PlayerProfile; re
           <div className={`forge-result ${res.success ? "ok" : "no"}`} onClick={() => { setPhase("idle"); setRes(null); }}>
             <div className="rays" />
             <div className="box">
-              <div className="ricon"><RodPreview level={res.to} /></div>
-              <div className="rname">{RODS[res.to].name}</div>
+              <div className="ricon"><Pv level={res.to} /></div>
+              <div className="rname">{TABLE[res.to].name}</div>
               <div className="rstep">{res.to}단계</div>
               <div className="rtitle">{res.success ? "강화 성공" : "강화 실패"}</div>
               <div className="rrows">
                 {res.success
-                  ? stats(res.to).slice(0, 4).map(([k, v], i) => <div key={k}><span>{k}</span><span>{stats(res.from)[i][1]} <em>›››</em> <b>{v}</b> <i>▲</i></span></div>)
+                  ? stats(res.to, H).slice(0, 4).map(([k, v], i) => <div key={k}><span>{k}</span><span>{stats(res.from, H)[i][1]} <em>›››</em> <b>{v}</b> <i>▲</i></span></div>)
                   : <>
                       <div><span>강화석</span><span className="bad">−{res.spent.stones.toLocaleString()}</span></div>
                       <div><span>코인</span><span className="bad">−{res.spent.coins.toLocaleString()}</span></div>
-                      <div><span>낚싯대 단계</span><span>{res.from}단계 유지</span></div>
+                      <div><span>{NAME} 단계</span><span>{res.from}단계 유지</span></div>
                     </>}
               </div>
               <div className="rok">화면을 누르면 닫혀요</div>

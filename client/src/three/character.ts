@@ -411,6 +411,8 @@ export interface PoseState {
   ride?: boolean;
   /** 헤엄 자세 (수중 탐험). k: 0 제자리에서 떠 있음 ~ 1 헤엄침. style: 0 평영(양팔을 함께 뻗고 가르기), 1 자유형(양팔을 번갈아 젓기) */
   swim?: { k: number; style: number };
+  /** 작살총을 겨눈 자세 (수중 탐험): 두 팔을 앞으로 들어 올려 총을 잡는다. pitch: 겨누는 방향의 위아래 각도(위가 +, 라디안) */
+  aim?: { pitch: number };
 }
 
 /** 캐릭터 한 명: 3D 모델과 걷기, 이모트, 낚시 자세 애니메이션 */
@@ -425,6 +427,8 @@ export class CharacterRig {
   /** 새 모델일 때: 위 팔/다리/머리 그룹은 회전값만 담고, 실제 뼈가 그 값을 따라간다 */
   private driven: Array<{ bone: THREE.Bone; rest: THREE.Quaternion; key: string }> = [];
   private model: THREE.Group | null = null;
+  /** 손 뼈(새 모델일 때만): 손에 든 것을 손 위치에 놓을 때 쓴다 */
+  private hands: { L: THREE.Bone | null; R: THREE.Bone | null } = { L: null, R: null };
   private moveBlend = 0;
   private blink = 0;
   private nextBlink = 2;
@@ -541,6 +545,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
       model.traverse((o) => { if ((o as THREE.Bone).isBone && re.test(o.name)) f = o as THREE.Bone; });
       return f as THREE.Bone | null;
     };
+    this.hands = { L: bone(/LeftHand$/), R: bone(/RightHand$/) };
     this.armL = new THREE.Group();
     this.armR = new THREE.Group();
     this.legL = new THREE.Object3D();
@@ -774,6 +779,13 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
     }
   }
 
+  /** 손의 세계 좌표(새 모델이 아니면 어깨 높이 앞쪽으로 어림한다). side: 캐릭터의 왼손 L, 오른손 R */
+  handWorld(side: "L" | "R", out: THREE.Vector3): THREE.Vector3 {
+    const b = this.hands[side];
+    if (b) return b.getWorldPosition(out);
+    return this.root.localToWorld(out.set(side === "L" ? 0.25 : -0.25, 1.4, 0.8));
+  }
+
   update(dt: number, pose: PoseState, targetFacing?: number) {
     this.t += dt;
     if (targetFacing !== undefined) this.facing = lerpAngle(this.facing, targetFacing, Math.min(1, dt * 12));
@@ -852,6 +864,12 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
       this.armL.rotation.set(mix(-0.5 - tr, lx), 0, mix(-0.75, lz));
       this.ex.spineTwist = twist * k;
       this.ex.straight = mix(0.3, straight);
+    }
+    if (pose.aim && !pose.ride) { // 작살총: 두 팔을 겨누는 쪽으로 곧게 든다(몸이 앞으로 기울어 있으면 그만큼 더 든다)
+      const r = -Math.PI / 2 - (pose.aim.pitch + this.root.rotation.x);
+      this.armR.rotation.set(r, 0, 0.1);
+      this.armL.rotation.set(r, 0, -0.1);
+      this.ex.straight = 0.85;
     }
     if (pose.ride) { // 탈것에 앉아 앞을 잡은 자세
       this.legL.rotation.x = this.legR.rotation.x = -1.35;
