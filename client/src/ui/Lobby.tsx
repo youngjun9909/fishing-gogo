@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { BAITS, BASE_MAPS, CODEX_REWARDS, ITEMS, MAX_ROD, ROD_SELL_BONUS, RODS, SPECIES, STONES_PER_FISH, UW_FISH, UW_ZONE_NAMES, codexSpeciesFor, itemById, rodEffects, rodLevelOf, sellPrice, speciesById } from "@fishing/shared";
+import { BAITS, BASE_MAPS, CODEX_REWARDS, ITEMS, MAX_ROD, ROD_SELL_BONUS, RODS, SPECIES, STONES_PER_FISH, UW_FISH, UW_ZONE_NAMES, canWear, codexSpeciesFor, itemById, rodEffects, rodLevelOf, sellPrice, speciesById } from "@fishing/shared";
 import type { Appearance, CatchRecord, CodexEntry, MapId, PlayerProfile, ShopItem } from "@fishing/shared";
 import { getAudio, setMuted, setVolume, sfx } from "../audio";
 import { api, auth } from "../net";
@@ -385,8 +385,8 @@ function Mounts({ onClose, profile, reload }: { onClose: () => void; profile: Pl
   );
 }
 
-const SLOT_NAME = { top: "상의", pants: "하의", shoes: "신발", aura: "오라" } as const;
-const SLOT_EMOJI = { top: "👕", pants: "👖", shoes: "👟", aura: "✨" } as const;
+const SLOT_NAME = { top: "상의", pants: "하의", shoes: "신발", outfit: "한벌옷", aura: "오라" } as const;
+const SLOT_EMOJI = { top: "👕", pants: "👖", shoes: "👟", outfit: "🧥", aura: "✨" } as const;
 
 export function Shop({ onClose, profile, reload }: { onClose: () => void; profile: PlayerProfile; reload: () => Promise<void> }) {
   const [slot, setSlot] = useState<ShopItem["slot"] | "rod" | "bait">("bait"); // 낚싯대 강화는 대장장이에게서 한다
@@ -403,6 +403,7 @@ export function Shop({ onClose, profile, reload }: { onClose: () => void; profil
     if (slot !== "rod" && slot !== "bait" && pick) {
       if (pick === "none") delete equipped[slot];
       else equipped[slot] = pick;
+      if (pick !== "none" && slot !== "outfit" && slot !== "aura") delete equipped.outfit; // 한벌옷에 가려지면 입어 본 옷이 안 보인다
     }
     return { appearance: profile.appearance, equipped };
   }, [profile.appearance, profile.equipped, slot, pick]);
@@ -424,7 +425,7 @@ export function Shop({ onClose, profile, reload }: { onClose: () => void; profil
     <Modal title={`🛍️ 상점  🪙 ${profile.coins.toLocaleString()}  💎 ${(profile.stones ?? 0).toLocaleString()}`} onClose={onClose}>
       <div className="tabs">
         <button className={`tab ${slot === "bait" ? "on" : ""}`} onClick={() => changeSlot("bait")}>🪱 미끼</button>
-        {(["top", "pants", "shoes", "aura"] as const).map((s) => (
+        {(["top", "pants", "shoes", "outfit", "aura"] as const).map((s) => (
           <button key={s} className={`tab ${slot === s ? "on" : ""}`} onClick={() => changeSlot(s)}>{SLOT_EMOJI[s]} {SLOT_NAME[s]}</button>
         ))}
         <span className="hint" style={{ alignSelf: "center" }}>{msg}</span>
@@ -434,7 +435,7 @@ export function Shop({ onClose, profile, reload }: { onClose: () => void; profil
         <div className="rod-view">
           <CharacterPreview look={previewLook} slot={slot} />
           <div className="nm" style={{ fontSize: 18 }}>{pick === "none" ? "기본 옷" : pick ? itemById(pick)?.name : profile.equipped[slot] ? itemById(profile.equipped[slot])?.name : "기본 옷"}</div>
-          <div className="hint">상품을 누르면 입어 볼 수 있어요</div>
+          <div className="hint">{slot === "outfit" ? "한벌옷은 상의·하의·신발을 한꺼번에 덮어요" : profile.equipped.outfit && slot !== "aura" ? "지금은 한벌옷을 입고 있어서, 한벌옷을 벗어야 보여요" : "상품을 누르면 입어 볼 수 있어요"}</div>
         </div>
         <div className="grid">
         <div className={`cell ${pick === "none" ? "pick" : ""}`} onClick={() => setPick("none")}>
@@ -445,12 +446,16 @@ export function Shop({ onClose, profile, reload }: { onClose: () => void; profil
         {items.map((it) => {
           const owned = profile.ownedItems.includes(it.id);
           const worn = profile.equipped[slot] === it.id;
+          const fits = canWear(it, profile.appearance.gender);
           return (
-            <div key={it.id} className={`cell ${worn ? "sel" : ""} ${pick === it.id ? "pick" : ""}`} onClick={() => setPick(it.id)}>
+            <div key={it.id} className={`cell ${worn ? "sel" : ""} ${pick === it.id ? "pick" : ""}`} style={fits ? undefined : { opacity: 0.55 }} onClick={() => fits && setPick(it.id)}>
               <div style={{ fontSize: 38 }}>{SLOT_EMOJI[it.slot]}</div>
               <div className="nm">{it.name}</div>
               {!it.purchasable && <span className="badge" style={{ background: RARITY_COLOR.legendary }}>도감 보상</span>}
-              {owned ? (
+              {it.femaleOnly && <span className="badge" style={{ background: "#e88fb4" }}>여자 전용</span>}
+              {!fits ? (
+                <button className="btn small ghost" disabled>여자만 입어요</button>
+              ) : owned ? (
                 <button className="btn small mint" onClick={(e) => { e.stopPropagation(); void act(() => api("/api/equip", { slot, itemId: worn ? null : it.id }), worn ? "벗었어요" : `${it.name}을 입었어요`); }}>{worn ? "벗기" : "입기"}</button>
               ) : (
                 <button className="btn small sun" disabled={profile.coins < it.price} onClick={(e) => { e.stopPropagation(); void act(() => api("/api/buy", { itemId: it.id }), `${it.name}을 샀어요!`); }}>🪙 {it.price}</button>
@@ -524,6 +529,7 @@ const PREVIEW_FOCUS: Record<string, { y: number; d: number }> = {
   top: { y: 1.7, d: 5.6 },
   pants: { y: 1.0, d: 5.4 },
   shoes: { y: 0.55, d: 4.2 },
+  outfit: { y: 1.2, d: 7 },
   aura: { y: 1.4, d: 8 },
 };
 
@@ -624,7 +630,7 @@ function Settings({ onClose, onLogout, reload }: { onClose: () => void; onLogout
       {auth.token?.startsWith("dev:") && (
         <div className="row">
           <button className="btn sun" onClick={async () => {
-            try { await api("/api/dev/grant", {}); await reload(); setDevMsg("돈 5000과 강화석 500을 받았어요"); } catch (e) { setDevMsg(e instanceof Error ? e.message : ""); }
+            try { await api("/api/dev/grant", {}); await reload(); setDevMsg("돈 50000과 강화석 500을 받았어요"); } catch (e) { setDevMsg(e instanceof Error ? e.message : ""); }
           }}>🧪 개발용: 돈 5000 + 강화석 500 받기</button>
           <p className="hint">{devMsg}</p>
         </div>

@@ -2,7 +2,7 @@ import { codexSpeciesFor, SPECIES } from "./fish";
 import type { MapId, Rarity } from "./types";
 import { candidatesFor } from "./rules";
 
-export type ItemSlot = "top" | "pants" | "shoes" | "aura";
+export type ItemSlot = "top" | "pants" | "shoes" | "outfit" | "aura";
 
 export interface ShopItem {
   id: string;
@@ -11,13 +11,24 @@ export interface ShopItem {
   price: number;
   /** false면 도감 보상으로만 얻는다 */
   purchasable: boolean;
+  /** true면 여자 캐릭터만 사고 입을 수 있다 */
+  femaleOnly?: boolean;
 }
+
+/** 이 캐릭터(gender 0 여자, 1 남자)가 입을 수 있는 아이템인가 */
+export const canWear = (item: ShopItem, gender?: number) => !(item.femaleOnly && gender === 1);
 
 export const ITEMS: ShopItem[] = [
   // 옷은 상의·하의·신발을 따로 사고 입는다. 기본 옷(흰 티, 검정 반바지, 검정 운동화)은 아무것도 안 입었을 때 보인다
   { id: "top-hoodie", name: "남색 후드티", slot: "top", price: 1500, purchasable: true },
   { id: "pants-jeans", name: "청바지", slot: "pants", price: 1200, purchasable: true },
   { id: "shoes-white", name: "흰 운동화", slot: "shoes", price: 900, purchasable: true },
+  // 한벌옷: 입으면 상의·하의·신발 자리를 한꺼번에 덮는다(따로 입은 상의·하의·신발은 그대로 남아 있고 보이지만 않는다)
+  { id: "outfit-haori", name: "짙은 회색 하오리 한벌", slot: "outfit", price: 20000, purchasable: true },
+  { id: "outfit-whitehoodie", name: "흰 후드 치마 한벌", slot: "outfit", price: 20000, purchasable: true, femaleOnly: true },
+  { id: "outfit-tigerrobe", name: "백호 도포 한벌", slot: "outfit", price: 60000, purchasable: true },
+  { id: "outfit-hanbokgirl", name: "화려한 궁중 한복 한벌", slot: "outfit", price: 60000, purchasable: true, femaleOnly: true },
+  { id: "outfit-streetpuffer", name: "검은 패딩 카고 한벌", slot: "outfit", price: 70000, purchasable: true },
   { id: "aura-sparkle", name: "반짝 오라", slot: "aura", price: 6000, purchasable: true },
   { id: "aura-bubble", name: "물방울 오라", slot: "aura", price: 9000, purchasable: true },
   { id: "aura-flame", name: "불꽃 오라", slot: "aura", price: 12000, purchasable: true },

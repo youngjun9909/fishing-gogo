@@ -2,7 +2,7 @@ import { buildAura } from "./auras";
 import { buildRod } from "./rods";
 import type { RodFx } from "./rods";
 import * as THREE from "three";
-import { rodLevelOf } from "@fishing/shared";
+import { canWear, itemById, rodLevelOf } from "@fishing/shared";
 import type { Appearance } from "@fishing/shared";
 import { lerpAngle } from "./engine";
 import { buildHair } from "./hair";
@@ -102,6 +102,49 @@ const ITEM_MESH: Record<string, string> = {
   "pants-jeans": "tee", // 청바지(메시 이름이 tee인 것은 옛 이름)
   "shoes-white": "hoodie", // 흰 운동화
 };
+/** 한벌옷 아이템 → 모델 파일 이름(outfit_<이름>_<f|m>.glb, 남녀 몸에 따로 맞춘 것). 입은 사람이 있을 때만 받아 온다 */
+const OUTFIT_FILE: Record<string, string> = { "outfit-haori": "haori", "outfit-whitehoodie": "whitehoodie", "outfit-tigerrobe": "tigerrobe", "outfit-hanbokgirl": "hanbokgirl", "outfit-streetpuffer": "streetpuffer" };
+const outfitGlbs = new Map<string, Promise<THREE.Group>>();
+function loadOutfit(file: string): Promise<THREE.Group> {
+  let p = outfitGlbs.get(file);
+  if (!p) {
+    p = new GLTFLoader().loadAsync(`/models/${file}.glb`).then((g) => g.scene);
+    p.catch(() => outfitGlbs.delete(file)); // 실패하면 다음에 다시 받게 한다
+    outfitGlbs.set(file, p);
+  }
+  return p;
+}
+/** 한벌옷에 가려지는 몸 삼각형을 뺀 몸 모양(몸 모양 하나 × 한벌옷 하나마다 한 번만 만든다) */
+const hiddenBody = new Map<string, THREE.BufferGeometry | null>();
+function bodyUnder(body: THREE.SkinnedMesh, keys: string, file: string): THREE.BufferGeometry | null {
+  const id = `${body.geometry.uuid}|${file}`;
+  if (hiddenBody.has(id)) return hiddenBody.get(id)!;
+  // 한벌옷 파일에는 옷 밑에 가려지는 몸 점들의 자리(뼈대 기준 좌표, mm 정수)가 적혀 있다. 같은 자리의 몸 점을 찾아 그 점들로만 된 삼각형을 뺀다
+  const want = new Set<string>();
+  const n = keys.split(",");
+  for (let i = 0; i + 2 < n.length; i += 3) want.add(`${n[i]},${n[i + 1]},${n[i + 2]}`);
+  const g = body.geometry;
+  const pos = g.attributes.position;
+  const v = new THREE.Vector3();
+  const hid = new Uint8Array(pos.count);
+  let hits = 0;
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i).applyMatrix4(body.bindMatrix);
+    if (want.has(`${Math.round(v.x * 1000)},${Math.round(v.y * 1000)},${Math.round(v.z * 1000)}`)) { hid[i] = 1; hits++; }
+  }
+  let out: THREE.BufferGeometry | null = null;
+  if (hits > want.size * 0.5 && g.index) { // 자리가 거의 맞지 않으면(몸 파일이 바뀌었을 때) 숨기지 않는다
+    const idx = g.index.array;
+    const keep: number[] = [];
+    for (let t = 0; t < idx.length; t += 3) if (!(hid[idx[t]] && hid[idx[t + 1]] && hid[idx[t + 2]])) keep.push(idx[t], idx[t + 1], idx[t + 2]);
+    out = new THREE.BufferGeometry();
+    for (const k of Object.keys(g.attributes)) out.setAttribute(k, g.attributes[k]);
+    out.setIndex(keep);
+    out.boundingSphere = g.boundingSphere;
+  }
+  hiddenBody.set(id, out);
+  return out;
+}
 // 아무것도 안 입은 칸은 기본 옷("basic": 흰 티, 검정 반바지, 검정 스니커즈)이 보인다
 const outfitPart = (name: string) => /^(top|pants|shoes)d?_(.+)$/.exec(name);
 
@@ -449,6 +492,7 @@ export class CharacterRig {
   facing = 0;
 
   private outfitId = "";
+  private disposed = false;
 
   constructor(look: Look) {
     this.outfitId = look.equipped.outfit ?? "";
@@ -578,6 +622,49 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
 
     if (equipped.aura) this.makeAura(equipped.aura);
     this.poseBones();
+    const oItem = itemById(equipped.outfit ?? "");
+    const of = oItem && canWear(oItem, a.gender) ? OUTFIT_FILE[oItem.id] : undefined; // 여자 전용 옷은 남자 캐릭터에게 보이지 않는다
+    const ofile = `outfit_${of}_${a.gender === 1 && glbMale ? "m" : "f"}`;
+    if (of) loadOutfit(ofile).then((src) => this.wearOutfit(src, ofile), () => undefined); // 못 받으면 따로 입은 옷 그대로
+  }
+
+  /** 한벌옷을 몸의 뼈대에 묶어 입히고, 따로 입은 상의·하의·신발은 숨긴다. 한벌옷 파일의 뼈대는 몸 파일과 같은 것이라 이름으로 짝지으면 된다 */
+  private wearOutfit(src: THREE.Group, file: string) {
+    const model = this.model;
+    if (!model || this.disposed) return;
+    const bones = new Map<string, THREE.Bone>();
+    model.traverse((o) => { if ((o as THREE.Bone).isBone) bones.set(o.name, o as THREE.Bone); });
+    const worn: THREE.SkinnedMesh[] = [];
+    let keys = "";
+    src.traverse((o) => {
+      if (typeof o.userData.hideBody === "string") keys = o.userData.hideBody;
+      const s = o as THREE.SkinnedMesh;
+      if (!s.isSkinnedMesh) return;
+      const mine = s.skeleton.bones.map((b) => bones.get(b.name));
+      if (mine.some((b) => !b)) return;
+      const m = s.clone();
+      const map = (s.material as THREE.MeshStandardMaterial).map;
+      m.material = new THREE.MeshStandardMaterial({ map, roughness: 0.8, emissive: new THREE.Color("#ffffff"), emissiveMap: map, emissiveIntensity: 0.22, side: THREE.DoubleSide });
+      m.bind(new THREE.Skeleton(mine as THREE.Bone[], s.skeleton.boneInverses), s.bindMatrix);
+      m.castShadow = true;
+      m.frustumCulled = false;
+      m.userData.sharedGeometry = true;
+      worn.push(m);
+    });
+    if (!worn.length) return;
+    // 옷 밑의 몸은 숨긴다(움직일 때 몸이 옷을 뚫고 나와 찢어진 것처럼 보이지 않게)
+    let body: THREE.SkinnedMesh | null = null;
+    model.traverse((o) => {
+      const s = o as THREE.SkinnedMesh;
+      if (s.isSkinnedMesh && !outfitPart(s.name) && (!body || s.geometry.attributes.position.count > body.geometry.attributes.position.count)) body = s;
+    });
+    const under = body && keys ? bodyUnder(body, keys, file) : null;
+    if (body && under) {
+      (body as THREE.SkinnedMesh).geometry = under;
+      (body as THREE.SkinnedMesh).userData.sharedGeometry = true; // 여러 캐릭터가 함께 쓰는 모양이라 지우지 않는다
+    }
+    model.add(...worn);
+    model.traverse((o) => { if (outfitPart(o.name)) o.visible = false; });
   }
 
   /** 값 그릇의 회전을 모델 뼈에 옮긴다 */
@@ -926,6 +1013,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
   }
 
   dispose() {
+    this.disposed = true;
     this.root.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.userData?.sharedGeometry) m.geometry?.dispose?.();

@@ -1,5 +1,5 @@
 import {
-  CODEX_REWARDS, EMOTES, HARPOONS, MAX_HARPOON, harpoonLevelOf, SPECIES, ITEMS, MAX_CUSTOM_MAPS, MAX_BAIT, MAX_ROD, MAX_STONE_BUY, RODS, STONE_PRICE, STONES_PER_FISH, baitById, rodLevelOf, SECRET_EMOTES, codexRatio, itemById, sellPrice,
+  CODEX_REWARDS, EMOTES, HARPOONS, MAX_HARPOON, harpoonLevelOf, SPECIES, ITEMS, MAX_CUSTOM_MAPS, MAX_BAIT, MAX_ROD, MAX_STONE_BUY, RODS, STONE_PRICE, STONES_PER_FISH, baitById, canWear, rodLevelOf, SECRET_EMOTES, codexRatio, itemById, sellPrice,
   speciesById,
 } from "@fishing/shared";
 import type { Appearance, CatchRecord, MapId, PlayerProfile } from "@fishing/shared";
@@ -105,6 +105,7 @@ export class GameService {
     const item = itemById(itemId);
     if (!item || !item.purchasable) throw new Error("살 수 없는 아이템이에요");
     const p = await this.mustProfile(playerId);
+    if (!canWear(item, p.appearance.gender)) throw new Error("여자 캐릭터만 입을 수 있는 옷이에요");
     if (p.ownedItems.includes(itemId)) throw new Error("이미 가지고 있어요");
     if (p.coins < item.price) throw new Error("돈이 부족해요");
     p.coins -= item.price;
@@ -203,6 +204,7 @@ export class GameService {
     } else {
       const item = itemById(itemId);
       if (!item || item.slot !== slot) throw new Error("이 칸에 입을 수 없어요");
+      if (!canWear(item, p.appearance.gender)) throw new Error("여자 캐릭터만 입을 수 있는 옷이에요");
       if (!p.ownedItems.includes(itemId)) throw new Error("가지고 있지 않아요");
       p.equipped[slot] = itemId;
     }
@@ -230,7 +232,7 @@ export class GameService {
   /** 개발용: 돈 5000을 준다(아이템은 상점에서 직접 산다) */
   async devGrant(playerId: string): Promise<PlayerProfile> {
     const p = await this.mustProfile(playerId);
-    p.coins += 5000;
+    p.coins += 50000;
     p.stones = (p.stones ?? 0) + 500;
     await this.store.saveProfile(p);
     return p;

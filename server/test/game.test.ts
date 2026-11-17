@@ -391,6 +391,28 @@ describe("경제와 도감", () => {
     expect(p.equipped).toEqual({ top: "top-hoodie", pants: "pants-jeans" });
   });
 
+  it("한벌옷은 한벌옷 칸에만 입고, 따로 입은 상의는 그대로 남는다", async () => {
+    const p0 = await h.service.ensureProfile("a");
+    await h.store.saveProfile({ ...p0, coins: 40000 });
+    await h.service.buy("a", "top-hoodie");
+    await h.service.equip("a", "top", "top-hoodie");
+    expect((await h.service.buy("a", "outfit-haori")).coins).toBe(18500);
+    await expect(h.service.equip("a", "top", "outfit-haori")).rejects.toThrow("입을 수 없");
+    await expect(h.service.equip("a", "outfit", "outfit-whitehoodie")).rejects.toThrow("가지고 있지 않");
+    expect((await h.service.equip("a", "outfit", "outfit-haori")).equipped).toEqual({ top: "top-hoodie", outfit: "outfit-haori" });
+    expect((await h.service.equip("a", "outfit", null)).equipped).toEqual({ top: "top-hoodie" });
+  });
+
+  it("여자 전용 한벌옷은 남자 캐릭터가 사지도 입지도 못하고, 공용 한벌옷은 둘 다 산다", async () => {
+    const p0 = await h.service.ensureProfile("a");
+    await h.store.saveProfile({ ...p0, coins: 300000, appearance: { ...p0.appearance, gender: 1 } });
+    await expect(h.service.buy("a", "outfit-hanbokgirl")).rejects.toThrow("여자 캐릭터만");
+    await expect(h.service.buy("a", "outfit-whitehoodie")).rejects.toThrow("여자 캐릭터만");
+    expect((await h.service.buy("a", "outfit-streetpuffer")).ownedItems).toContain("outfit-streetpuffer");
+    await h.store.saveProfile({ ...(await h.service.ensureProfile("a")), appearance: { ...p0.appearance, gender: 0 } });
+    expect((await h.service.buy("a", "outfit-hanbokgirl")).ownedItems).toContain("outfit-hanbokgirl");
+  });
+
   it("대장장이에게서 강화석을 한 개 300코인에 산다. 돈이 모자라거나 개수가 이상하면 거절한다", async () => {
     const p0 = await h.service.ensureProfile("a");
     await h.store.saveProfile({ ...p0, coins: 1000, stones: 5 });
