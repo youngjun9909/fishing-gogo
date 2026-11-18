@@ -630,7 +630,7 @@ function Settings({ onClose, onLogout, reload }: { onClose: () => void; onLogout
       {auth.token?.startsWith("dev:") && (
         <div className="row">
           <button className="btn sun" onClick={async () => {
-            try { await api("/api/dev/grant", {}); await reload(); setDevMsg("돈 50000과 강화석 500을 받았어요"); } catch (e) { setDevMsg(e instanceof Error ? e.message : ""); }
+            try { await api("/api/dev/grant", {}); await reload(); setDevMsg("돈 100만과 강화석 500을 받았어요"); } catch (e) { setDevMsg(e instanceof Error ? e.message : ""); }
           }}>🧪 개발용: 돈 5000 + 강화석 500 받기</button>
           <p className="hint">{devMsg}</p>
         </div>

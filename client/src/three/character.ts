@@ -103,7 +103,14 @@ const ITEM_MESH: Record<string, string> = {
   "shoes-white": "hoodie", // 흰 운동화
 };
 /** 한벌옷 아이템 → 모델 파일 이름(outfit_<이름>_<f|m>.glb, 남녀 몸에 따로 맞춘 것). 입은 사람이 있을 때만 받아 온다 */
-const OUTFIT_FILE: Record<string, string> = { "outfit-haori": "haori", "outfit-whitehoodie": "whitehoodie", "outfit-tigerrobe": "tigerrobe", "outfit-hanbokgirl": "hanbokgirl", "outfit-streetpuffer": "streetpuffer" };
+const OUTFIT_FILE: Record<string, string> = { "outfit-haori": "haori", "outfit-whitehoodie": "whitehoodie", "outfit-tigerrobe": "tigerrobe", "outfit-hanbokgirl": "hanbokgirl", "outfit-streetpuffer": "streetpuffer", "outfit-trackjacket": "trackjacket", "outfit-trackskirt": "trackskirt", "outfit-redpullover": "redpullover", "outfit-redgrunge": "redgrunge", "outfit-navyskirt": "navyskirt" };
+/** 낱개 옷 아이템 → 조각 파일 이름(piece_<칸>_<이름>_<f|m>.glb). 한벌옷 모델을 상의·하의·신발로 가른 것 */
+const PIECE_FILE: Record<string, string> = {
+  "top-trackjacket": "trackjacket", "pants-washdenim": "washdenim", "shoes-sneakerbw": "sneakerbw",
+  "top-trackcrop": "trackcrop", "pants-pleated": "pleated", "shoes-sambawarm": "sambawarm",
+  "top-navyknit": "navyknit", "pants-frillskirt": "frillskirt", "shoes-graysocks": "graysocks",
+  "top-pufferjacket": "pufferjacket", "pants-cargopants": "cargopants", "shoes-chunkysneaker": "chunkysneaker", "top-redzip": "redzip", "pants-graydenim": "graydenim", "shoes-redsneaker": "redsneaker", "top-gruntop": "gruntop", "pants-chainpants": "chainpants", "shoes-blackboots": "blackboots",
+};
 const outfitGlbs = new Map<string, Promise<THREE.Group>>();
 function loadOutfit(file: string): Promise<THREE.Group> {
   let p = outfitGlbs.get(file);
@@ -626,18 +633,31 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
     const of = oItem && canWear(oItem, a.gender) ? OUTFIT_FILE[oItem.id] : undefined; // 여자 전용 옷은 남자 캐릭터에게 보이지 않는다
     const ofile = `outfit_${of}_${a.gender === 1 && glbMale ? "m" : "f"}`;
     if (of) loadOutfit(ofile).then((src) => this.wearOutfit(src, ofile), () => undefined); // 못 받으면 따로 입은 옷 그대로
+    else { // 한벌옷이 없으면 낱개 조각(상의·하의·신발)을 입는다
+      const g = a.gender === 1 && glbMale ? "m" : "f";
+      const files: Array<[string, "top" | "pants" | "shoes"]> = [];
+      for (const kind of ["top", "pants", "shoes"] as const) {
+        const it = itemById(equipped[kind] ?? "");
+        if (it && PIECE_FILE[it.id] && canWear(it, a.gender)) files.push([`piece_${kind}_${PIECE_FILE[it.id]}_${g}`, kind]);
+      }
+      if (files.length) Promise.all(files.map(([f]) => loadOutfit(f))).then((srcs) => this.wearOutfit(srcs.map((s, i) => [s, files[i][0]] as [THREE.Group, string]), files.map(([, k]) => k)), () => undefined);
+    }
   }
 
   /** 한벌옷을 몸의 뼈대에 묶어 입히고, 따로 입은 상의·하의·신발은 숨긴다. 한벌옷 파일의 뼈대는 몸 파일과 같은 것이라 이름으로 짝지으면 된다 */
-  private wearOutfit(src: THREE.Group, file: string) {
+  private wearOutfit(srcIn: THREE.Group | Array<[THREE.Group, string]>, fileIn?: string | Array<"top" | "pants" | "shoes">) {
+    // 한벌옷 하나(src, file)이거나, 낱개 조각 여럿([[src, file], ...], 가릴 칸 목록)
+    const list: Array<[THREE.Group, string]> = Array.isArray(srcIn) ? srcIn : [[srcIn, fileIn as string]];
+    const kinds = Array.isArray(fileIn) ? new Set<string>(fileIn) : null;
+    const file = list.map((x) => x[1]).join("+");
     const model = this.model;
     if (!model || this.disposed) return;
     const bones = new Map<string, THREE.Bone>();
     model.traverse((o) => { if ((o as THREE.Bone).isBone) bones.set(o.name, o as THREE.Bone); });
     const worn: THREE.SkinnedMesh[] = [];
     let keys = "";
-    src.traverse((o) => {
-      if (typeof o.userData.hideBody === "string") keys = o.userData.hideBody;
+    for (const [src] of list) src.traverse((o) => {
+      if (typeof o.userData.hideBody === "string") keys += (keys ? "," : "") + o.userData.hideBody;
       const s = o as THREE.SkinnedMesh;
       if (!s.isSkinnedMesh) return;
       const mine = s.skeleton.bones.map((b) => bones.get(b.name));
@@ -664,7 +684,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uBrow * (lumE / 0.17), eyeMk.g);`)
       (body as THREE.SkinnedMesh).userData.sharedGeometry = true; // 여러 캐릭터가 함께 쓰는 모양이라 지우지 않는다
     }
     model.add(...worn);
-    model.traverse((o) => { if (outfitPart(o.name)) o.visible = false; });
+    model.traverse((o) => { const pm = outfitPart(o.name); if (pm && (!kinds || kinds.has(pm[1]))) o.visible = false; });
   }
 
   /** 값 그릇의 회전을 모델 뼈에 옮긴다 */
