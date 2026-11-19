@@ -13,6 +13,12 @@ import type { GameService } from "./service";
 /** 타이밍 칸 판정에서 통신 지연으로 봐 주는 최대 시간(ms) */
 const REEL_LAG_MS = 400;
 
+/** 캐릭터 모습 문자열. 정확히 255바이트인 문자열은 Colyseus(schema 3.0.76)가 빈 문자열로 전달하는 버그가 있어(탈것·오라 등을 입으면 우연히 255가 된다), 그런 경우 공백 하나를 붙여 피한다(JSON.parse 는 뒤 공백을 무시한다) */
+export function lookString(profile: { appearance: unknown; equipped: unknown }): string {
+  const s = JSON.stringify({ appearance: profile.appearance, equipped: profile.equipped });
+  return Buffer.byteLength(s) === 255 ? s + " " : s;
+}
+
 export class PlayerState extends Schema {
   @type("string") playerId = "";
   @type("string") name = "";
@@ -182,7 +188,7 @@ export function createFishingRoom(deps: RoomDeps) {
       const p = new PlayerState();
       p.playerId = profile.id;
       p.name = profile.nickname;
-      p.look = JSON.stringify({ appearance: profile.appearance, equipped: profile.equipped });
+      p.look = lookString(profile);
       p.title = profile.titles.at(-1) ?? "";
       p.x = this.map.spawn.x;
       p.z = this.map.spawn.z;
@@ -244,7 +250,7 @@ export function createFishingRoom(deps: RoomDeps) {
       if (!p) return;
       const profile = await deps.service.profile(p.playerId);
       if (!profile || !this.state.players.has(client.sessionId)) return;
-      p.look = JSON.stringify({ appearance: profile.appearance, equipped: profile.equipped });
+      p.look = lookString(profile);
       if (this.state.players.get(client.sessionId)?.fishing === "idle") this.rods.set(client.sessionId, rodLevelOf(profile.equipped));
     }
 

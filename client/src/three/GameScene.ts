@@ -524,7 +524,7 @@ export class GameScene {
         const rp = peer.rig.root;
         if (!Number.isFinite(rp.position.x + rp.position.y + rp.position.z) || !Number.isFinite(rp.scale.x + rp.scale.y + rp.scale.z) || rp.scale.y < 0.01) {
           // 위치나 크기가 이상한 값(NaN 등)이 되면 서버가 아는 자리와 원래 크기로 되돌린다. 값이 어디서 망가졌는지 알 수 있게 남긴다
-          console.error("[peer-nan]", id, { pos: rp.position.toArray(), scale: rp.scale.toArray(), look: p.look, server: [p.x, p.z] });
+          console.error("[peer-nan]", JSON.stringify({ id, mine: id === this.mySession, name: p.name, pid: String(p.playerId).slice(0, 8), pos: rp.position.toArray(), scale: rp.scale.toArray(), lookLen: String(p.look ?? "").length, server: [p.x, p.z], fishing: p.fishing }));
           rp.position.set(Number.isFinite(p.x) ? p.x : 0, 0, Number.isFinite(p.z) ? p.z : 0);
           rp.scale.set(1, 1, 1);
         }

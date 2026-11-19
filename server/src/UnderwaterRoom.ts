@@ -1,6 +1,7 @@
 import { Client, Room, matchMaker } from "@colyseus/core";
 import { MapSchema, Schema, type } from "@colyseus/schema";
 import { ChatLimiter, cleanChat } from "./chat";
+import { lookString } from "./FishingRoom";
 import type { RoomDeps } from "./FishingRoom";
 import { BOSS, BOSS_REWARDS, BOSS_TITLE, ZONE_SPECIES, UW_CAP, UW_RATE, UW_SHELLS, uwTugParams, uwTugStart, uwTugStep, uwBeatPress, uwSoon, rollChest, crowdPriceMul, harpoonLevelOf, harpoonStats, huntPos, inwardSeed, resolveThrow, uwHitRadius, uwLength, uwSpeciesById } from "@fishing/shared";
 import { BOSS_NAMES } from "@fishing/shared";
@@ -502,7 +503,7 @@ export function createUnderwaterRoom(deps: Pick<RoomDeps, "service" | "authentic
       const p = new DiverState();
       p.playerId = profile.id;
       p.name = profile.nickname;
-      p.look = JSON.stringify({ appearance: profile.appearance, equipped: profile.equipped });
+      p.look = lookString(profile);
       this.state.players.set(client.sessionId, p);
       this.limiters.set(client.sessionId, new ChatLimiter());
       this.harp.set(client.sessionId, harpoonLevelOf(profile.equipped));
