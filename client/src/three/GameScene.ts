@@ -521,6 +521,13 @@ export class GameScene {
           peer = this.addPeer(id, p);
         }
         this.updatePeer(peer, id, p, dt);
+        const rp = peer.rig.root;
+        if (!Number.isFinite(rp.position.x + rp.position.y + rp.position.z) || !Number.isFinite(rp.scale.x + rp.scale.y + rp.scale.z) || rp.scale.y < 0.01) {
+          // 위치나 크기가 이상한 값(NaN 등)이 되면 서버가 아는 자리와 원래 크기로 되돌린다. 값이 어디서 망가졌는지 알 수 있게 남긴다
+          console.error("[peer-nan]", id, { pos: rp.position.toArray(), scale: rp.scale.toArray(), look: p.look, server: [p.x, p.z] });
+          rp.position.set(Number.isFinite(p.x) ? p.x : 0, 0, Number.isFinite(p.z) ? p.z : 0);
+          rp.scale.set(1, 1, 1);
+        }
       } catch (e) {
         // 한 사람의 옷·모습 때문에 오류가 나도 장면 전체가 멈추지 않게 한다(움직임·카메라가 멈춰 바닥에 박힌 것처럼 보였다). 모습만 기본으로 바꿔 다시 그린다
         console.error("[peer]", id, e);
@@ -835,6 +842,7 @@ export class GameScene {
     // 맵 가장자리 밖으로 나가지 않게 한다
     want.x = clamp(want.x, -this.map.halfSize, this.map.halfSize);
     want.z = clamp(want.z, -this.map.halfSize, this.map.halfSize);
+    if (!Number.isFinite(this.camera.position.x + this.camera.position.y + this.camera.position.z)) { console.error("[camera-nan]", this.camera.position.toArray(), target.toArray(), this.camDist, this.camPitch); this.camera.position.copy(want); }
     this.camera.position.lerp(want, Math.min(1, dt * 10));
     this.camera.lookAt(target);
   }
