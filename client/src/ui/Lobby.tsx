@@ -451,7 +451,7 @@ export function Shop({ onClose, profile, reload }: { onClose: () => void; profil
             <div key={it.id} className={`cell ${worn ? "sel" : ""} ${pick === it.id ? "pick" : ""}`} style={fits ? undefined : { opacity: 0.55 }} onClick={() => fits && setPick(it.id)}>
               <div style={{ fontSize: 38 }}>{SLOT_EMOJI[it.slot]}</div>
               <div className="nm">{it.name}</div>
-              {!it.purchasable && <span className="badge" style={{ background: RARITY_COLOR.legendary }}>도감 보상</span>}
+              {!it.purchasable && <span className="badge" style={{ background: it.price > 0 ? "#9a9aa8" : RARITY_COLOR.legendary }}>{it.price > 0 ? "판매 종료" : "도감 보상"}</span>}
               {it.femaleOnly && <span className="badge" style={{ background: "#e88fb4" }}>여자 전용</span>}
               {!fits ? (
                 <button className="btn small ghost" disabled>여자만 입어요</button>

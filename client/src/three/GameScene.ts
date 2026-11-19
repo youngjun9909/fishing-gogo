@@ -515,11 +515,19 @@ export class GameScene {
     players.forEach((p: any, id: string) => {
       seen.add(id);
       let peer = this.peers.get(id);
-      if (!peer || peer.look !== p.look) {
+      try {
+        if (!peer || peer.look !== p.look) {
+          if (peer) this.removePeer(id);
+          peer = this.addPeer(id, p);
+        }
+        this.updatePeer(peer, id, p, dt);
+      } catch (e) {
+        // 한 사람의 옷·모습 때문에 오류가 나도 장면 전체가 멈추지 않게 한다(움직임·카메라가 멈춰 바닥에 박힌 것처럼 보였다). 모습만 기본으로 바꿔 다시 그린다
+        console.error("[peer]", id, e);
         if (peer) this.removePeer(id);
-        peer = this.addPeer(id, p);
+        const safe = { ...p, look: JSON.stringify({ appearance: (() => { try { return JSON.parse(p.look).appearance; } catch { return { eyes: 0, nose: 0, mouth: 0, hair: 0, skinColor: 0, hairColor: 0, eyeColor: 0, body: 1, gender: 0 }; } })(), equipped: {} }) };
+        try { this.addPeer(id, safe).look = p.look; } catch (e2) { console.error("[peer-safe]", id, e2); } // look 를 원래 값으로 적어 두어 매 프레임 다시 시도하지 않는다
       }
-      this.updatePeer(peer, id, p, dt);
     });
     for (const id of [...this.peers.keys()]) if (!seen.has(id)) this.removePeer(id);
   }

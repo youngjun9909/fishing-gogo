@@ -408,12 +408,12 @@ describe("경제와 도감", () => {
     await h.store.saveProfile({ ...p0, coins: 300000, appearance: { ...p0.appearance, gender: 1 } });
     await expect(h.service.buy("a", "outfit-hanbokgirl")).rejects.toThrow("여자 캐릭터만");
     await expect(h.service.buy("a", "outfit-whitehoodie")).rejects.toThrow("여자 캐릭터만");
-    await expect(h.service.buy("a", "outfit-trackskirt")).rejects.toThrow("여자 캐릭터만");
-    await expect(h.service.buy("a", "outfit-navyskirt")).rejects.toThrow("여자 캐릭터만");
+    
+    await expect(h.service.buy("a", "outfit-streetpuffer")).rejects.toThrow("살 수 없");
     await expect(h.service.buy("a", "top-navyknit")).rejects.toThrow("여자 캐릭터만");
     expect((await h.service.buy("a", "pants-washdenim")).ownedItems).toContain("pants-washdenim");
-    expect((await h.service.buy("a", "outfit-redgrunge")).ownedItems).toContain("outfit-redgrunge");
-    expect((await h.service.buy("a", "outfit-streetpuffer")).ownedItems).toContain("outfit-streetpuffer");
+    
+    expect((await h.service.buy("a", "outfit-tigerrobe")).ownedItems).toContain("outfit-tigerrobe");
     await h.store.saveProfile({ ...(await h.service.ensureProfile("a")), appearance: { ...p0.appearance, gender: 0 } });
     expect((await h.service.buy("a", "outfit-hanbokgirl")).ownedItems).toContain("outfit-hanbokgirl");
   });
